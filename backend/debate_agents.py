@@ -125,6 +125,9 @@ class DebateAgents:
             f"{history}\n\n"
             f"You are speaking as the '{role}' party. "
             "Address or refute the other side and propose concrete revisions in 3-5 sentences. "
+            "If precedents or laws are provided, you MUST cite at least one precedent and one law when available. "
+            "If only one type is provided, cite at least one item from that type. "
+            "Include a '근거:' line listing cited items by title (and court/date if available). "
             "Respond in Korean."
         )
         return chat_completion(prompt=prompt, model=self.model, system_prompt=system_prompt)
@@ -142,7 +145,8 @@ class DebateAgents:
             f"{context}\n\n"
             "Conversation so far:\n"
             f"{history}\n\n"
-            "Analyze the debate and return the JSON only."
+            "Analyze the debate and return the JSON only. "
+            "If precedents or laws are provided, include at least one precedent and one law in common_points when available."
         )
         return chat_completion(
             prompt=prompt,
@@ -184,6 +188,8 @@ class DebateAgents:
     def _format_clauses(clauses: List[Clause]) -> str:
         if not clauses:
             return "- 위험 조항이 발견되지 않았습니다."
+        top_k = int(os.getenv("DEBATE_REF_TOP_K", "2"))
+        snippet_len = int(os.getenv("DEBATE_REF_SNIPPET_LEN", "160"))
         lines = []
         for clause in clauses:
             risk_level = clause.risk_level.value if clause.risk_level else "unknown"
@@ -193,7 +199,60 @@ class DebateAgents:
             lines.append(
                 f"- {clause.article_num} {title} (risk={risk_level}): {snippet}"
             )
+            refs = DebateAgents._format_references(
+                clause,
+                top_k=top_k,
+                snippet_len=snippet_len,
+            )
+            if refs:
+                lines.append(refs)
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_references(
+        clause: Clause,
+        top_k: int = 2,
+        snippet_len: int = 160,
+    ) -> str:
+        def _trim(text: str) -> str:
+            text = (text or "").strip()
+            return text[:snippet_len] + ("..." if len(text) > snippet_len else "")
+
+        parts: List[str] = []
+        precedents = clause.related_precedents or []
+        laws = clause.related_laws or []
+
+        if precedents:
+            p_lines = []
+            for p in precedents[:top_k]:
+                title = p.case_name or p.case_id or "판례"
+                summary = _trim(p.summary or p.key_paragraph or "")
+                meta = f"{p.court} {p.date}".strip()
+                if meta:
+                    title = f"{title} ({meta})"
+                if summary:
+                    p_lines.append(f"  - {title}: {summary}")
+                else:
+                    p_lines.append(f"  - {title}")
+            parts.append("  [판례]\n" + "\n".join(p_lines))
+
+        if laws:
+            l_lines = []
+            for l in laws[:top_k]:
+                title = l.title or l.doc_id or "법령"
+                summary = _trim(l.summary or l.content or "")
+                meta = l.date or ""
+                if meta:
+                    title = f"{title} ({meta})"
+                if summary:
+                    l_lines.append(f"  - {title}: {summary}")
+                else:
+                    l_lines.append(f"  - {title}")
+            parts.append("  [법령]\n" + "\n".join(l_lines))
+
+        if not parts:
+            return ""
+        return "  근거:\n" + "\n".join(parts)
 
     @staticmethod
     def _format_history(transcript: List[Dict[str, str]]) -> str:
