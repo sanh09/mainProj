@@ -11,6 +11,6 @@ dependencies:
       - requests
       - uvicorn[standard]
       - python-dotenv
-      - mysql-connector-python
+      - psycopg[binary]
       - python-multipart
       - email-validator

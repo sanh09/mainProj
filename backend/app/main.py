@@ -7,7 +7,9 @@ from typing import Any, Optional
 from uuid import uuid4
 from threading import Lock
 
-import mysql.connector
+import psycopg
+import requests
+from psycopg.rows import dict_row
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -23,15 +25,39 @@ ANALYSIS_STORE: dict[str, dict[str, Any]] = {}
 ANALYSIS_LOCK = Lock()
 ANALYSIS_TTL_SECONDS = int(os.getenv("ANALYSIS_TTL_SECONDS", "3600"))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploads/user_files")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "user-files")
 
 def _get_db_conn():
-    return mysql.connector.connect(
+    return psycopg.connect(
         host=os.getenv("DB_HOST", "db"),
-        port=int(os.getenv("DB_PORT", "3306")),
+        port=int(os.getenv("DB_PORT", "5432")),
         user=os.getenv("DB_USER", "app_user"),
         password=os.getenv("DB_PASSWORD", "app_pass"),
-        database=os.getenv("DB_NAME", "app_db"),
+        dbname=os.getenv("DB_NAME", "app_db"),
+        sslmode=os.getenv("DB_SSLMODE", "require"),
     )
+
+def _upload_to_supabase_storage(
+    local_path: str, remote_path: str, content_type: str
+) -> Optional[str]:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    upload_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{SUPABASE_STORAGE_BUCKET}/{remote_path}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Content-Type": content_type or "application/octet-stream",
+        "x-upsert": "true",
+    }
+    with open(local_path, "rb") as handle:
+        response = requests.post(upload_url, headers=headers, data=handle, timeout=30)
+    if response.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Supabase Storage upload failed: {response.status_code} {response.text}"
+        )
+    return f"{SUPABASE_STORAGE_BUCKET}/{remote_path}"
 
 def _ensure_analysis_columns():
     conn = None
@@ -39,7 +65,7 @@ def _ensure_analysis_columns():
     try:
         conn = _get_db_conn()
         cur = conn.cursor()
-        db_name = os.getenv("DB_NAME", "app_db")
+        db_schema = os.getenv("DB_SCHEMA", "public")
         cur.execute(
             """
             SELECT COLUMN_NAME
@@ -48,15 +74,15 @@ def _ensure_analysis_columns():
               AND table_name='analysis_history'
               AND column_name IN ('clauses_json', 'risky_clauses_json', 'raw_text')
             """,
-            (db_name,),
+            (db_schema,),
         )
         existing = {row[0] for row in cur.fetchall() or []}
         if "clauses_json" not in existing:
-            cur.execute("ALTER TABLE analysis_history ADD COLUMN clauses_json JSON NULL")
+            cur.execute("ALTER TABLE analysis_history ADD COLUMN clauses_json JSONB NULL")
         if "risky_clauses_json" not in existing:
-            cur.execute("ALTER TABLE analysis_history ADD COLUMN risky_clauses_json JSON NULL")
+            cur.execute("ALTER TABLE analysis_history ADD COLUMN risky_clauses_json JSONB NULL")
         if "raw_text" not in existing:
-            cur.execute("ALTER TABLE analysis_history ADD COLUMN raw_text MEDIUMTEXT NULL")
+            cur.execute("ALTER TABLE analysis_history ADD COLUMN raw_text TEXT NULL")
         if (
             "clauses_json" not in existing
             or "risky_clauses_json" not in existing
@@ -323,6 +349,7 @@ async def analyze_file(
         saved_path = os.path.join(UPLOAD_DIR, saved_filename)
         with open(saved_path, "wb") as out:
             out.write(contents)
+        storage_path = saved_path
 
         result = pipeline.analyze(saved_path)
         raw_text = (result.raw_text or "").strip()
@@ -369,6 +396,15 @@ async def analyze_file(
             cur.execute("SELECT id FROM users WHERE id=%s", (resolved_user_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=400, detail="User not found")
+            try:
+                remote_name = f"{resolved_user_id}/{saved_filename}"
+                uploaded_path = _upload_to_supabase_storage(
+                    saved_path, remote_name, content_type
+                )
+                if uploaded_path:
+                    storage_path = uploaded_path
+            except Exception as exc:
+                print("SUPABASE UPLOAD ERROR >>>", repr(exc))
             cur.execute(
                 """
                 INSERT INTO user_files
@@ -380,7 +416,7 @@ async def analyze_file(
                     display_name,
                     content_type,
                     size_bytes,
-                    saved_path,
+                    storage_path,
                 ),
             )
             cur.execute(
@@ -435,7 +471,7 @@ def get_history(user_id: int = Query(...)) -> UTF8JSONResponse:
     cur = None
     try:
         conn = _get_db_conn()
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(row_factory=dict_row)
         cur.execute(
             """
             SELECT id, user_id, original_name, risky_count, risk_level, summary, created_at
@@ -465,7 +501,7 @@ def get_analysis_detail(analysis_id: int) -> UTF8JSONResponse:
     cur = None
     try:
         conn = _get_db_conn()
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(row_factory=dict_row)
         try:
             cur.execute(
                 """
@@ -476,9 +512,9 @@ def get_analysis_detail(analysis_id: int) -> UTF8JSONResponse:
                 """,
                 (analysis_id,),
             )
-        except mysql.connector.Error as exc:
+        except psycopg.Error as exc:
             # Backward-compatible: column might not exist yet.
-            if getattr(exc, "errno", None) != 1054:
+            if "does not exist" not in str(exc).lower():
                 raise
             cur.execute(
                 """
@@ -495,11 +531,19 @@ def get_analysis_detail(analysis_id: int) -> UTF8JSONResponse:
         clauses_raw = row.pop("clauses_json", None)
         risky_clauses_raw = row.pop("risky_clauses_json", None)
         try:
-            row["clauses"] = json.loads(clauses_raw) if clauses_raw else []
+            if isinstance(clauses_raw, (dict, list)):
+                row["clauses"] = clauses_raw
+            else:
+                row["clauses"] = json.loads(clauses_raw) if clauses_raw else []
         except (TypeError, json.JSONDecodeError):
             row["clauses"] = []
         try:
-            row["risky_clauses"] = json.loads(risky_clauses_raw) if risky_clauses_raw else []
+            if isinstance(risky_clauses_raw, (dict, list)):
+                row["risky_clauses"] = risky_clauses_raw
+            else:
+                row["risky_clauses"] = (
+                    json.loads(risky_clauses_raw) if risky_clauses_raw else []
+                )
         except (TypeError, json.JSONDecodeError):
             row["risky_clauses"] = []
         raw_text = row.get("raw_text")
@@ -528,7 +572,7 @@ def get_files(user_id: int = Query(...)) -> UTF8JSONResponse:
     cur = None
     try:
         conn = _get_db_conn()
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(row_factory=dict_row)
         cur.execute(
             """
             SELECT id, user_id, original_name, content_type, size_bytes, storage_path, uploaded_at
@@ -609,7 +653,7 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
     cur = None
     try:
         conn = _get_db_conn()
-        cur = conn.cursor(dictionary=True)
+        cur = conn.cursor(row_factory=dict_row)
         cur.execute(
             """
             SELECT clauses_json, risky_clauses_json
@@ -625,12 +669,18 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
         risky_raw = row.get("risky_clauses_json")
         clauses = []
         try:
-            clauses = json.loads(clauses_raw) if clauses_raw else []
+            if isinstance(clauses_raw, (dict, list)):
+                clauses = clauses_raw
+            else:
+                clauses = json.loads(clauses_raw) if clauses_raw else []
         except (TypeError, json.JSONDecodeError):
             clauses = []
         risky_clauses = []
         try:
-            risky_clauses = json.loads(risky_raw) if risky_raw else []
+            if isinstance(risky_raw, (dict, list)):
+                risky_clauses = risky_raw
+            else:
+                risky_clauses = json.loads(risky_raw) if risky_raw else []
         except (TypeError, json.JSONDecodeError):
             risky_clauses = []
 
@@ -724,13 +774,7 @@ def signup(req: SignupRequest):
     conn = None
     cur = None
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "db"),
-            port=int(os.getenv("DB_PORT", "3306")),
-            user=os.getenv("DB_USER", "app_user"),
-            password=os.getenv("DB_PASSWORD", "app_pass"),
-            database=os.getenv("DB_NAME", "app_db"),
-        )
+        conn = _get_db_conn()
         cur = conn.cursor()
         cur.execute("SELECT id FROM users WHERE email=%s", (req.email,))
         if cur.fetchone():
@@ -758,14 +802,8 @@ def login(req: LoginRequest):
     conn = None
     cur = None
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "db"),
-            port=int(os.getenv("DB_PORT", "3306")),
-            user=os.getenv("DB_USER", "app_user"),
-            password=os.getenv("DB_PASSWORD", "app_pass"),
-            database=os.getenv("DB_NAME", "app_db"),
-        )
-        cur = conn.cursor(dictionary=True)
+        conn = _get_db_conn()
+        cur = conn.cursor(row_factory=dict_row)
         cur.execute(
             "SELECT id, name, email, password_hash, created_at FROM users WHERE email=%s",
             (str(req.email),),
@@ -799,14 +837,8 @@ def get_profile(email: EmailStr = Query(...)):
     conn = None
     cur = None
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "db"),
-            port=int(os.getenv("DB_PORT", "3306")),
-            user=os.getenv("DB_USER", "app_user"),
-            password=os.getenv("DB_PASSWORD", "app_pass"),
-            database=os.getenv("DB_NAME", "app_db"),
-        )
-        cur = conn.cursor(dictionary=True)
+        conn = _get_db_conn()
+        cur = conn.cursor(row_factory=dict_row)
         cur.execute(
             "SELECT id, name, email, created_at FROM users WHERE email=%s",
             (str(email),),
@@ -835,14 +867,8 @@ def update_profile(req: UpdateProfileRequest):
     conn = None
     cur = None
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "db"),
-            port=int(os.getenv("DB_PORT", "3306")),
-            user=os.getenv("DB_USER", "app_user"),
-            password=os.getenv("DB_PASSWORD", "app_pass"),
-            database=os.getenv("DB_NAME", "app_db"),
-        )
-        cur = conn.cursor(dictionary=True)
+        conn = _get_db_conn()
+        cur = conn.cursor(row_factory=dict_row)
         updates = []
         params = []
         if req.name:
