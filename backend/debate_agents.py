@@ -48,7 +48,7 @@ MEDIATOR_SYSTEM_PROMPT = (
 
 class DebateAgents:
     def __init__(self, model: str | None = None) -> None:
-        self.model = model or os.getenv("OPENAI_DEBATE_MODEL") or "gpt-4o"
+        self.model = model or os.getenv("OPENAI_DEBATE_MODEL") or "gpt-5.2"
 
     def run(
         self,

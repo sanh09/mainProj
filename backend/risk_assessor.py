@@ -10,7 +10,7 @@ from models import Clause, RiskType
 
 class RiskAssessor:
     def __init__(self, model: Optional[str] = None) -> None:
-        self.model = model or os.getenv("OPENAI_RISK_MODEL") or "gpt-4o"
+        self.model = model or os.getenv("OPENAI_RISK_MODEL") or "gpt-5.2"
         self.api_key = os.getenv("OPENAI_API_KEY") or "api필요"
         self._client = self._build_client() if self.api_key != "api필요" else None
 

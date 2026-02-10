@@ -15,7 +15,7 @@ def _get_client():
 
 
 def chat_completion(
-    prompt: str, model: str = "gpt-4o", system_prompt: str | None = None
+    prompt: str, model: str = "gpt-5.2", system_prompt: str | None = None
 ) -> str:
     client = _get_client()
     messages = []
