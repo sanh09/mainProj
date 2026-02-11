@@ -136,18 +136,28 @@ class ContractAnalysisPipeline:
         # 5단계: 임베딩 생성 및 유사도 검색
         print("[5/8] 임베딩 생성 및 유사도 검색..")
         step_start = time.perf_counter()
-        self.embedding_manager.attach_embeddings(all_laws, self._format_law_text)
+        use_db_vector = self.embedding_manager.use_db_vector_search
+        if not use_db_vector:
+            self.embedding_manager.attach_embeddings(all_laws, self._format_law_text)
         for clause in risky_clauses:
             clause_text = self._format_clause_text([clause]) or (
                 f"{clause.title or clause.article_num}\n{clause.content}"
             )
-            similar_precedents = self.embedding_manager.find_similar_precedents(
-                clause_text, all_precedents
-            )
+            if use_db_vector:
+                similar_precedents = self.embedding_manager.find_similar_precedents_db(
+                    clause_text
+                )
+            else:
+                similar_precedents = self.embedding_manager.find_similar_precedents(
+                    clause_text, all_precedents
+                )
             clause.related_precedents = similar_precedents
-            similar_laws = self.embedding_manager.find_similar_laws(
-                clause_text, all_laws
-            )
+            if use_db_vector:
+                similar_laws = self.embedding_manager.find_similar_laws_db(clause_text)
+            else:
+                similar_laws = self.embedding_manager.find_similar_laws(
+                    clause_text, all_laws
+                )
             clause.related_laws = similar_laws
         print("     유사도 검색 완료")
         print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")

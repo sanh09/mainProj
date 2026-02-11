@@ -10,6 +10,7 @@ except ImportError as exc:
     ) from exc
 
 from models import Law
+from law_store import search_laws, upsert_laws
 
 
 class LawFetcher:
@@ -28,15 +29,28 @@ class LawFetcher:
         self.api_key = (
             api_key or os.getenv("LAW_API_KEY") or os.getenv("PRECEDENT_API_KEY") or "api필요"
         )
-        target_env = os.getenv("LAW_TARGETS") or "law,ordin"
+        target_env = os.getenv("LAW_TARGETS") or "law,admrul,ordin"
         self.targets = targets or [t.strip() for t in target_env.split(",") if t.strip()]
         self.detail_limit = int(os.getenv("LAW_DETAIL_LIMIT") or "10")
         self.max_text_chars = int(os.getenv("LAW_DETAIL_TEXT_LIMIT") or "4000")
+        self.prefer_db = os.getenv("LAW_PREFER_DB", "true").lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+        )
+        self.db_limit = int(os.getenv("LAW_DB_LIMIT") or "20")
+        self.page_size = int(os.getenv("LAW_PAGE_SIZE") or "20")
+        self.max_pages = int(os.getenv("LAW_MAX_PAGES") or "5")
 
     def fetch_laws(self, keyword: str, targets: Optional[List[str]] = None) -> List[Law] | str:
         include_terms = self._get_include_terms()
         must_title_terms = self._get_must_title_terms()
         base_query = self._get_base_query()
+        if self.prefer_db:
+            cached = search_laws(keyword, limit=self.db_limit)
+            if cached:
+                return cached
         if self.api_key == "api필요":
             return "api필요"
         if not self.api_url:
@@ -61,28 +75,47 @@ class LawFetcher:
             for law in laws
             if (law.summary and law.summary.strip()) or (law.content and law.content.strip())
         ]
-        return detailed or laws
+        final_items = detailed or laws
+        if final_items:
+            upsert_laws(final_items, keywords=[keyword])
+        return final_items
 
     def _search_target(self, target: str, keyword: str) -> List[Law]:
-        response = requests.get(
-            self.api_url,
-            params={"OC": self.api_key, "target": target, "type": "JSON", "query": keyword},
-            timeout=30,
-        )
-        try:
-            response.raise_for_status()
-        except requests.HTTPError:
-            return []
-        try:
-            payload = response.json() or {}
-        except ValueError:
-            return []
-        items = self._extract_items(payload, target)
         laws: List[Law] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            laws.append(self._build_law_from_item(target, item))
+        seen_keys = set()
+        for page in range(1, max(self.max_pages, 1) + 1):
+            response = requests.get(
+                self.api_url,
+                params={
+                    "OC": self.api_key,
+                    "target": target,
+                    "type": "JSON",
+                    "query": keyword,
+                    "page": page,
+                    "display": self.page_size,
+                },
+                timeout=30,
+            )
+            try:
+                response.raise_for_status()
+            except requests.HTTPError:
+                break
+            try:
+                payload = response.json() or {}
+            except ValueError:
+                break
+            items = self._extract_items(payload, target)
+            if not items:
+                break
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                law = self._build_law_from_item(target, item)
+                key = (law.doc_type, law.doc_id, law.title)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                laws.append(law)
         return laws
 
     def _build_law_from_item(self, target: str, item: dict) -> Law:
@@ -211,20 +244,17 @@ class LawFetcher:
 
     @staticmethod
     def _get_include_terms() -> List[str]:
-        raw = (
-            os.getenv("LAW_DOMAIN_KEYWORDS")
-            or "부동산,임대차,임대,임차,주택,전세,월세,보증금"
-        )
+        raw = os.getenv("LAW_DOMAIN_KEYWORDS") or ""
         return [term.strip() for term in raw.split(",") if term.strip()]
 
     @staticmethod
     def _get_must_title_terms() -> List[str]:
-        raw = os.getenv("LAW_TITLE_MUST_KEYWORDS") or "주택임대차보호법"
+        raw = os.getenv("LAW_TITLE_MUST_KEYWORDS") or ""
         return [term.strip() for term in raw.split(",") if term.strip()]
 
     @staticmethod
     def _get_base_query() -> str:
-        return (os.getenv("LAW_BASE_QUERY") or "주택임대차보호법").strip()
+        return (os.getenv("LAW_BASE_QUERY") or "").strip()
 
     @staticmethod
     def _filter_by_terms(

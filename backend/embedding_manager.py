@@ -17,6 +17,12 @@ class EmbeddingManager:
         self.model = model or os.getenv("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-small"
         self.api_key = os.getenv("OPENAI_API_KEY") or "api필요"
         self._client = OpenAI(api_key=self.api_key) if self.api_key != "api필요" else None
+        self.use_db_vector_search = os.getenv("USE_DB_VECTOR_SEARCH", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+        )
 
     def generate_embedding(self, text: str) -> List[float] | str:
         if self.api_key == "api필요":
@@ -44,6 +50,22 @@ class EmbeddingManager:
     ) -> List[Law] | str:
         return self._find_similar_items(target_text, laws, top_k)
 
+    def find_similar_precedents_db(self, target_text: str, top_k: int = 3) -> List[Precedent] | str:
+        from precedent_store import search_precedents_by_vector
+
+        target_embedding = self.generate_embedding(target_text)
+        if target_embedding == "api필요":
+            return "api필요"
+        return search_precedents_by_vector(target_embedding, limit=top_k)
+
+    def find_similar_laws_db(self, target_text: str, top_k: int = 3) -> List[Law] | str:
+        from law_store import search_laws_by_vector
+
+        target_embedding = self.generate_embedding(target_text)
+        if target_embedding == "api필요":
+            return "api필요"
+        return search_laws_by_vector(target_embedding, limit=top_k)
+
     def attach_embeddings(self, items: List[object], text_getter, max_items: Optional[int] = None):
         if not items:
             return []
@@ -58,6 +80,7 @@ class EmbeddingManager:
             if embedding == "api필요":
                 return "api필요"
             setattr(item, "embedding", embedding)
+            setattr(item, "embedding_model", self.model)
         return items
 
     def _find_similar_items(self, target_text: str, items: List[object], top_k: int):
