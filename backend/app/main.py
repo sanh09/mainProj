@@ -263,6 +263,7 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
 
     return {
         "clause_text": clause_text,
+        "risk_reason": risk_reason,
         "tenant_argument": tenant_argument,
         "landlord_argument": landlord_argument,
         "tenant_tags": tenant_tags,
@@ -303,6 +304,7 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "clause_text": clause_text,
+        "risk_reason": risk_reason,
         "tenant_argument": tenant_argument,
         "landlord_argument": landlord_argument,
         "tenant_tags": tenant_tags,
