@@ -9,6 +9,7 @@ dependencies:
       - fastapi
       - openai
       - requests
+      - pypdf
       - uvicorn[standard]
       - python-dotenv
       - psycopg[binary]

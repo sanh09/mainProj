@@ -3,7 +3,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from enum import Enum
 
 
@@ -67,3 +67,4 @@ class ContractAnalysisResult:
     llm_summary: Optional[str] = None
     debate_transcript: Optional[List[dict]] = None
     contract_type: Optional[str] = None
+    source_document: Optional[Dict] = None

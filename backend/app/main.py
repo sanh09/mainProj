@@ -358,6 +358,24 @@ def _clause_matches(clause: Any, raw_id: str, normalized_target: str) -> bool:
     return False
 
 
+def _build_why_check_message(risk_reason: str, clause_text: str) -> str:
+    reason = (risk_reason or "").strip()
+    if reason:
+        return (
+            f"이 조항은 '{reason}' 사유로 분쟁 가능성이 있습니다. "
+            "문구의 적용 범위와 책임 기준을 구체적으로 확인해야 합니다."
+        )
+
+    text = (clause_text or "").strip()
+    if text:
+        return (
+            "이 조항은 책임 범위와 비용 부담 기준이 모호하면 분쟁으로 이어질 수 있습니다. "
+            "조건과 예외를 명확히 확인해야 합니다."
+        )
+
+    return "이 조항은 해석 차이로 분쟁이 생길 수 있으므로 적용 기준을 확인해야 합니다."
+
+
 def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
     clause_text = getattr(clause, "content", None) or ""
     risk_reason = getattr(clause, "risk_reason", None) or ""
@@ -386,6 +404,7 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
             negotiation_points = [risk_reason]
     if not compromise_quote and (tenant_argument or landlord_argument):
         compromise_quote = "상호 협의하여 합리적인 범위로 조정한다."
+    why_check = _build_why_check_message(risk_reason, clause_text)
 
     return {
         "clause_text": clause_text,
@@ -396,6 +415,7 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
         "landlord_tags": landlord_tags,
         "negotiation_points": negotiation_points,
         "compromise_quote": compromise_quote,
+        "why_check": why_check,
     }
 
 
@@ -427,6 +447,7 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
             negotiation_points = [risk_reason]
     if not compromise_quote and (tenant_argument or landlord_argument):
         compromise_quote = "상호 협의하여 합리적인 범위로 조정한다."
+    why_check = _build_why_check_message(risk_reason, clause_text)
 
     return {
         "clause_text": clause_text,
@@ -437,6 +458,7 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
         "landlord_tags": landlord_tags,
         "negotiation_points": negotiation_points,
         "compromise_quote": compromise_quote,
+        "why_check": why_check,
     }
 @app.get("/")
 def read_root():
@@ -635,12 +657,12 @@ async def analyze_file(
         if raw_text == "api필요":
             raise HTTPException(
                 status_code=503,
-                detail="OCR failed: UPSTAGE_API_KEY is missing.",
+                detail="Document extraction failed: OPENAI_API_KEY is missing.",
             )
         if not raw_text:
             raise HTTPException(
                 status_code=422,
-                detail="OCR produced empty text. Check the input file and OCR service.",
+                detail="Document extraction produced empty text. Check file type and extraction settings.",
             )
         if not result.clauses and not os.getenv("OPENAI_API_KEY"):
             raise HTTPException(
@@ -745,6 +767,10 @@ async def analyze_file(
                 "risk_level": risk_level,
                 "summary": summary,
                 "llm_summary": summary,
+                "document_mode": (result.source_document or {}).get("mode"),
+                "document_markdown": (result.source_document or {}).get("markdown"),
+                "document_metadata": (result.source_document or {}).get("metadata"),
+                "document_content_json": (result.source_document or {}).get("content_json"),
                 "clauses": _serialize(result.clauses),
                 "risky_clauses": _serialize(result.risky_clauses),
             }

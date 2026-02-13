@@ -8,13 +8,17 @@ import time
 from typing import List, Optional
 from dataclasses import asdict
 
-from ocr import UpstageOCR, get_extracted_text
-from models import ContractAnalysisResult, Clause
+from ocr import GPTDocumentExtractor, get_extracted_text
+from models import ContractAnalysisResult, Clause, Law, Precedent
 from text_processor import TextProcessor
 from risk_assessor import RiskAssessor
 from precedent_fetcher import PrecedentFetcher
 from law_fetcher import LawFetcher
 from embedding_manager import EmbeddingManager
+from chunk_store import (
+    search_precedent_chunks_by_vector,
+    search_law_chunks_by_vector,
+)
 from risk_mapper import RiskMapper
 from llm_summarizer import LLMSummarizer
 from debate_agents import DebateAgents
@@ -26,7 +30,7 @@ class ContractAnalysisPipeline:
     """계약서 분석 전체 파이프라인"""
     
     def __init__(self):
-        self.ocr = UpstageOCR()
+        self.ocr = GPTDocumentExtractor()
         self.text_processor = TextProcessor()
         self.risk_assessor = RiskAssessor()
         self.precedent_fetcher = PrecedentFetcher()
@@ -35,13 +39,16 @@ class ContractAnalysisPipeline:
         self.risk_mapper = RiskMapper()
         self.llm_summarizer = LLMSummarizer()
         self.debate_agents = DebateAgents()
+        self.use_chunk_vector_search = (
+            os.getenv("USE_CHUNK_VECTOR_SEARCH", "true").lower() in ("1", "true", "yes", "y")
+        )
     
     def analyze(self, file_path: str) -> ContractAnalysisResult:
         """
         계약서 분석 전체 파이프라인 실행
         
         Flow:
-        1. OCR (Upstage)
+        1. GPT 문서 추출 (Markdown/JSON)
         2. 텍스트 정제 / 조항 분리
         3. LLM 기반 위험 조항 후보 필터
         4. 공공 판례 API 호출
@@ -58,12 +65,13 @@ class ContractAnalysisPipeline:
         """
         filename = os.path.basename(file_path)
         
-        # 1단계: OCR
-        print(f"[1/8] OCR 진행 중.. ({filename})")
+        # 1단계: 문서 추출
+        print(f"[1/8] 문서 추출 진행 중.. ({filename})")
         step_start = time.perf_counter()
         ocr_result = self.ocr.extract_text_from_file(file_path)
         raw_text = get_extracted_text(ocr_result)
-        print(f"     OCR 완료 ({time.perf_counter() - step_start:.2f}s)")
+        source_document = ocr_result if isinstance(ocr_result, dict) else None
+        print(f"     문서 추출 완료 ({time.perf_counter() - step_start:.2f}s)")
         
         # 2단계: 텍스트 정제 및 조항 분리
         print("[2/8] 텍스트 정제 및 조항 분리...")
@@ -136,28 +144,22 @@ class ContractAnalysisPipeline:
         # 5단계: 임베딩 생성 및 유사도 검색
         print("[5/8] 임베딩 생성 및 유사도 검색..")
         step_start = time.perf_counter()
-        use_db_vector = self.embedding_manager.use_db_vector_search
-        if not use_db_vector:
-            self.embedding_manager.attach_embeddings(all_laws, self._format_law_text)
+        self.embedding_manager.attach_embeddings(all_laws, self._format_law_text)
         for clause in risky_clauses:
             clause_text = self._format_clause_text([clause]) or (
                 f"{clause.title or clause.article_num}\n{clause.content}"
             )
-            if use_db_vector:
-                similar_precedents = self.embedding_manager.find_similar_precedents_db(
-                    clause_text
-                )
-            else:
-                similar_precedents = self.embedding_manager.find_similar_precedents(
-                    clause_text, all_precedents
-                )
+            similar_precedents = self.embedding_manager.find_similar_precedents(
+                clause_text, all_precedents
+            )
+            similar_precedents = self._merge_chunk_precedents(
+                clause_text, similar_precedents
+            )
             clause.related_precedents = similar_precedents
-            if use_db_vector:
-                similar_laws = self.embedding_manager.find_similar_laws_db(clause_text)
-            else:
-                similar_laws = self.embedding_manager.find_similar_laws(
-                    clause_text, all_laws
-                )
+            similar_laws = self.embedding_manager.find_similar_laws(
+                clause_text, all_laws
+            )
+            similar_laws = self._merge_chunk_laws(clause_text, similar_laws)
             clause.related_laws = similar_laws
         print("     유사도 검색 완료")
         print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")
@@ -172,16 +174,28 @@ class ContractAnalysisPipeline:
         print("     위험 유형 분류 완료")
         print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
         
-        # 7th step: detect contract type (debate generated on clause detail)
-        print("[7/8] Detecting contract type...")
+        # 7단계: 갑/을 토론 생성
+        print("[7/8] 갑/을 토론 생성...")
         step_start = time.perf_counter()
         contract_type = self.debate_agents.detect_contract_type(raw_text)
-        debate_transcript = []
-        print(f"     Contract type detected ({time.perf_counter() - step_start:.2f}s)")
+        debate_transcript = self.debate_agents.run(
+            risky_clauses,
+            raw_text=raw_text,
+            contract_type=contract_type,
+        )
+        # Align legacy labels with the new judge role name.
+        for turn in debate_transcript:
+            if turn.get("speaker") in ("mediator", "중재자"):
+                turn["speaker"] = "판사"
+        print(f"     토론 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
 
-        # 8단계: LLM 요약 (토론 기반 요약은 백그라운드에서 생성)
-        print("[8/8] LLM 요약 생략 (토론 기반 요약은 백그라운드에서 생성)")
-        llm_summary = ""
+        # 8단계: LLM 요약 생성
+        print("[8/8] LLM 조항 요약 생성...")
+        step_start = time.perf_counter()
+        llm_summary = self.llm_summarizer.generate_comprehensive_report(
+            self._format_clause_text(risky_clauses)
+        )
+        print(f"     요약 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
         
         # 결과 반환
         result = ContractAnalysisResult(
@@ -193,7 +207,8 @@ class ContractAnalysisPipeline:
             laws=all_laws,
             llm_summary=llm_summary,
             debate_transcript=debate_transcript,
-            contract_type=contract_type
+            contract_type=contract_type,
+            source_document=source_document,
         )
         
         print("\n분석 완료!")
@@ -243,6 +258,43 @@ class ContractAnalysisPipeline:
             title = clause.title or clause.article_num
             parts.append(f"{clause.article_num} {title}\n{clause.content}")
         return "\n\n".join(parts)
+
+    def _merge_chunk_precedents(
+        self, text: str, base: List[Precedent] | str
+    ) -> List[Precedent] | str:
+        if not self.use_chunk_vector_search or isinstance(base, str):
+            return base
+        embedding = self.embedding_manager.generate_embedding(text)
+        if embedding == "api필요":
+            return base
+        matches = search_precedent_chunks_by_vector(embedding, limit=3)
+        if isinstance(matches, str):
+            return base
+        seen = {p.case_id for p in base if p.case_id}
+        for chunk in matches:
+            if chunk.case_id and chunk.case_id in seen:
+                continue
+            seen.add(chunk.case_id)
+            base.append(chunk)
+        return base
+
+    def _merge_chunk_laws(self, text: str, base: List[Law] | str) -> List[Law] | str:
+        if not self.use_chunk_vector_search or isinstance(base, str):
+            return base
+        embedding = self.embedding_manager.generate_embedding(text)
+        if embedding == "api필요":
+            return base
+        matches = search_law_chunks_by_vector(embedding, limit=3)
+        if isinstance(matches, str):
+            return base
+        seen = {f"{law.doc_type}:{law.doc_id}" for law in base if law.doc_id}
+        for chunk in matches:
+            key = f"{chunk.doc_type}:{chunk.doc_id}"
+            if chunk.doc_id and key in seen:
+                continue
+            seen.add(key)
+            base.append(chunk)
+        return base
 
 
 # ==================== 사용 예시 ====================
