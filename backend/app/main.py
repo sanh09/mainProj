@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 from uuid import uuid4
-from threading import Lock, Thread
+from threading import Lock
 
 import psycopg
 import requests
@@ -512,45 +512,19 @@ def _build_debate_payload(
     contract_type: Optional[str],
     entry: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    summary_cache = None
-    transcript_cache = None
+    summary = ""
+    transcript = []
     if entry is not None:
-        summary_cache = entry.get("debate_summary")
-        transcript_cache = entry.get("debate_by_clause")
-
-    if summary_cache is not None and clause_key in summary_cache:
-        summary = summary_cache.get(clause_key)
-        transcript = None
-        if transcript_cache is not None:
-            transcript = transcript_cache.get(clause_key)
-        return {
-            "debate_summary": summary,
-            "debate_transcript": transcript,
-        }
-
-    transcript = None
-    if transcript_cache is not None:
-        transcript = transcript_cache.get(clause_key)
-    if transcript is None:
-        lock = _get_clause_lock(entry, clause_key) if entry is not None else None
-        if lock is not None:
-            lock.acquire()
-        try:
-            transcript = pipeline.debate_agents.run(
-                [clause],
-                raw_text=raw_text,
-                contract_type=contract_type,
-            )
-            if transcript_cache is not None:
-                transcript_cache[clause_key] = transcript
-        finally:
-            if lock is not None:
-                lock.release()
-
-    transcript_text = _format_transcript_text(transcript)
-    summary = pipeline.llm_summarizer.generate_debate_summary(transcript_text)
-    if summary_cache is not None:
-        summary_cache[clause_key] = summary
+        summary_cache = entry.get("debate_summary") or {}
+        transcript_cache = entry.get("debate_by_clause") or {}
+        if clause_key in summary_cache:
+            cached_summary = summary_cache.get(clause_key)
+            if isinstance(cached_summary, str):
+                summary = cached_summary
+        if clause_key in transcript_cache:
+            cached_transcript = transcript_cache.get(clause_key)
+            if isinstance(cached_transcript, list):
+                transcript = cached_transcript
     return {
         "debate_summary": summary,
         "debate_transcript": transcript,
@@ -564,30 +538,12 @@ def _build_debate_ui_payload(
     contract_type: Optional[str],
     entry: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    cache = None
     if entry is not None:
-        cache = entry.get("debate_ui_payload")
-        if cache is not None and clause_key in cache:
-            return cache.get(clause_key) or {}
-
-    transcript_cache = entry.get("debate_by_clause") if entry is not None else None
-    transcript = None
-    if transcript_cache is not None:
-        transcript = transcript_cache.get(clause_key)
-    if transcript is None:
-        transcript = pipeline.debate_agents.run(
-            [clause],
-            raw_text=raw_text,
-            contract_type=contract_type,
-        )
-        if transcript_cache is not None:
-            transcript_cache[clause_key] = transcript
-
-    input_text = _format_clause_ui_input(clause, transcript)
-    payload = pipeline.llm_summarizer.generate_clause_ui_payload(input_text)
-    if cache is not None:
-        cache[clause_key] = payload
-    return payload
+        cache = entry.get("debate_ui_payload") or {}
+        cached = cache.get(clause_key)
+        if isinstance(cached, dict):
+            return cached
+    return {}
 
 
 def _clause_from_dict(clause: dict[str, Any]) -> Clause:
@@ -670,12 +626,6 @@ async def analyze_file(
                 detail="Clause splitting fallback requires OPENAI_API_KEY.",
             )
         analysis_id = _store_result(result)
-        if DEBATE_BACKGROUND_ENABLED:
-            Thread(
-                target=_run_background_debates,
-                args=(analysis_id,),
-                daemon=True,
-            ).start()
 
         risky_count = len(result.risky_clauses or [])
         risk_level = _max_risk_level(result.risky_clauses or [])
@@ -936,16 +886,9 @@ def get_clause_debate_summary(analysis_id: str, clause_id: str) -> UTF8JSONRespo
         )
     transcript_cache = entry["debate_by_clause"]
     transcript = transcript_cache.get(clause_id)
-    if transcript is None:
-        transcript = pipeline.debate_agents.run(
-            [clause],
-            raw_text=result.raw_text,
-            contract_type=result.contract_type,
-        )
-        transcript_cache[clause_id] = transcript
-    transcript_text = _format_transcript_text(transcript)
-    summary = pipeline.llm_summarizer.generate_debate_summary(transcript_text)
-    summary_cache[clause_id] = summary
+    if not isinstance(transcript, list):
+        transcript = []
+    summary = ""
     return UTF8JSONResponse(
         content={
             "clause_id": clause_id,
@@ -1113,13 +1056,8 @@ def get_clause_debate_transcript(analysis_id: str, clause_id: str) -> UTF8JSONRe
         raise HTTPException(status_code=404, detail="Clause not found")
     transcript_cache = entry["debate_by_clause"]
     transcript = transcript_cache.get(clause_id)
-    if transcript is None:
-        transcript = pipeline.debate_agents.run(
-            [clause],
-            raw_text=result.raw_text,
-            contract_type=result.contract_type,
-        )
-        transcript_cache[clause_id] = transcript
+    if not isinstance(transcript, list):
+        transcript = []
     return UTF8JSONResponse(
         content={
             "clause_id": clause_id,
