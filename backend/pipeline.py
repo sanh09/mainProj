@@ -172,28 +172,16 @@ class ContractAnalysisPipeline:
         print("     위험 유형 분류 완료")
         print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
         
-        # 7단계: 갑/을 토론 생성
-        print("[7/8] 갑/을 토론 생성...")
+        # 7th step: detect contract type (debate generated on clause detail)
+        print("[7/8] Detecting contract type...")
         step_start = time.perf_counter()
         contract_type = self.debate_agents.detect_contract_type(raw_text)
-        debate_transcript = self.debate_agents.run(
-            risky_clauses,
-            raw_text=raw_text,
-            contract_type=contract_type,
-        )
-        # Align legacy labels with the new judge role name.
-        for turn in debate_transcript:
-            if turn.get("speaker") in ("mediator", "중재자"):
-                turn["speaker"] = "판사"
-        print(f"     토론 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+        debate_transcript = []
+        print(f"     Contract type detected ({time.perf_counter() - step_start:.2f}s)")
 
-        # 8단계: LLM 요약 생성
-        print("[8/8] LLM 조항 요약 생성...")
-        step_start = time.perf_counter()
-        llm_summary = self.llm_summarizer.generate_comprehensive_report(
-            self._format_clause_text(risky_clauses)
-        )
-        print(f"     요약 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+        # 8단계: LLM 요약 (토론 기반 요약은 백그라운드에서 생성)
+        print("[8/8] LLM 요약 생략 (토론 기반 요약은 백그라운드에서 생성)")
+        llm_summary = ""
         
         # 결과 반환
         result = ContractAnalysisResult(

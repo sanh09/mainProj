@@ -50,50 +50,77 @@ def _build_law_text(row: dict) -> str:
     return "\n".join([p.strip() for p in parts if isinstance(p, str) and p.strip()])
 
 
-def backfill_precedents(limit: int, dry_run: bool = False) -> int:
+def backfill_precedents(limit: int, dry_run: bool = False, fill_vec: bool = False) -> int:
     ensure_precedent_tables()
     embedder = EmbeddingManager()
-    if embedder.api_key == "api필요":
+    if not fill_vec and embedder.api_key == "api???":
         print("OPENAI_API_KEY is missing.")
         return 0
     conn = _get_db_conn()
     cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT case_id, case_name, summary, key_paragraph
-        FROM precedents
-        WHERE embedding IS NULL
-        LIMIT %s
-        """,
-        (limit,),
-    )
+    if fill_vec:
+        cur.execute(
+            """
+            SELECT case_id, embedding
+            FROM precedents
+            WHERE embedding IS NOT NULL AND embedding_vec IS NULL
+            LIMIT %s
+            """,
+            (limit,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT case_id, case_name, summary, key_paragraph
+            FROM precedents
+            WHERE embedding IS NULL
+            LIMIT %s
+            """,
+            (limit,),
+        )
     rows = cur.fetchall() or []
     updated = 0
-    for case_id, case_name, summary, key_paragraph in rows:
-        row = {
-            "case_name": case_name or "",
-            "summary": summary or "",
-            "key_paragraph": key_paragraph or "",
-        }
-        text = _build_precedent_text(row)
-        if not text:
-            continue
-        embedding = embedder.generate_embedding(text)
-        if embedding == "api필요":
-            break
-        if not dry_run:
-            cur.execute(
-                """
-                UPDATE precedents
-                SET embedding=%s,
-                    embedding_model=%s,
-                    embedding_vec=%s::vector,
-                    updated_at=CURRENT_TIMESTAMP
-                WHERE case_id=%s
-                """,
-                (Json(embedding), embedder.model, _format_vector_literal(embedding), case_id),
-            )
-        updated += 1
+    if fill_vec:
+        for case_id, embedding in rows:
+            if embedding is None:
+                continue
+            if not dry_run:
+                cur.execute(
+                    """
+                    UPDATE precedents
+                    SET embedding_vec=%s::vector,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE case_id=%s
+                    """,
+                    (_format_vector_literal(embedding), case_id),
+                )
+            updated += 1
+    else:
+        for case_id, case_name, summary, key_paragraph in rows:
+            row = {
+                "case_name": case_name or "",
+                "summary": summary or "",
+                "key_paragraph": key_paragraph or "",
+            }
+            text = _build_precedent_text(row)
+            if not text:
+                continue
+            embedding = embedder.generate_embedding(text)
+            if embedding == "api???":
+                break
+            if not dry_run:
+                cur.execute(
+                    """
+                    UPDATE precedents
+                    SET embedding=%s,
+                        embedding_model=%s,
+                        embedding_vec=%s::vector,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE case_id=%s
+                    """,
+                    (Json(embedding), embedder.model, _format_vector_literal(embedding), case_id),
+                )
+            updated += 1
     if not dry_run:
         conn.commit()
     cur.close()
@@ -101,50 +128,77 @@ def backfill_precedents(limit: int, dry_run: bool = False) -> int:
     return updated
 
 
-def backfill_laws(limit: int, dry_run: bool = False) -> int:
+def backfill_laws(limit: int, dry_run: bool = False, fill_vec: bool = False) -> int:
     ensure_law_tables()
     embedder = EmbeddingManager()
-    if embedder.api_key == "api필요":
+    if not fill_vec and embedder.api_key == "api???":
         print("OPENAI_API_KEY is missing.")
         return 0
     conn = _get_db_conn()
     cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT doc_key, title, summary, content
-        FROM laws
-        WHERE embedding IS NULL
-        LIMIT %s
-        """,
-        (limit,),
-    )
+    if fill_vec:
+        cur.execute(
+            """
+            SELECT doc_key, embedding
+            FROM laws
+            WHERE embedding IS NOT NULL AND embedding_vec IS NULL
+            LIMIT %s
+            """,
+            (limit,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT doc_key, title, summary, content
+            FROM laws
+            WHERE embedding IS NULL
+            LIMIT %s
+            """,
+            (limit,),
+        )
     rows = cur.fetchall() or []
     updated = 0
-    for doc_key, title, summary, content in rows:
-        row = {
-            "title": title or "",
-            "summary": summary or "",
-            "content": content or "",
-        }
-        text = _build_law_text(row)
-        if not text:
-            continue
-        embedding = embedder.generate_embedding(text)
-        if embedding == "api필요":
-            break
-        if not dry_run:
-            cur.execute(
-                """
-                UPDATE laws
-                SET embedding=%s,
-                    embedding_model=%s,
-                    embedding_vec=%s::vector,
-                    updated_at=CURRENT_TIMESTAMP
-                WHERE doc_key=%s
-                """,
-                (Json(embedding), embedder.model, _format_vector_literal(embedding), doc_key),
-            )
-        updated += 1
+    if fill_vec:
+        for doc_key, embedding in rows:
+            if embedding is None:
+                continue
+            if not dry_run:
+                cur.execute(
+                    """
+                    UPDATE laws
+                    SET embedding_vec=%s::vector,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE doc_key=%s
+                    """,
+                    (_format_vector_literal(embedding), doc_key),
+                )
+            updated += 1
+    else:
+        for doc_key, title, summary, content in rows:
+            row = {
+                "title": title or "",
+                "summary": summary or "",
+                "content": content or "",
+            }
+            text = _build_law_text(row)
+            if not text:
+                continue
+            embedding = embedder.generate_embedding(text)
+            if embedding == "api???":
+                break
+            if not dry_run:
+                cur.execute(
+                    """
+                    UPDATE laws
+                    SET embedding=%s,
+                        embedding_model=%s,
+                        embedding_vec=%s::vector,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE doc_key=%s
+                    """,
+                    (Json(embedding), embedder.model, _format_vector_literal(embedding), doc_key),
+                )
+            updated += 1
     if not dry_run:
         conn.commit()
     cur.close()
@@ -157,16 +211,21 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=200)
     parser.add_argument("--targets", default="precedents,laws")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--fill-vec",
+        action="store_true",
+        help="Populate embedding_vec from existing embedding JSON without calling API.",
+    )
     args = parser.parse_args()
 
     targets = {t.strip().lower() for t in args.targets.split(",") if t.strip()}
     total = 0
     if "precedents" in targets:
-        updated = backfill_precedents(args.limit, dry_run=args.dry_run)
+        updated = backfill_precedents(args.limit, dry_run=args.dry_run, fill_vec=args.fill_vec)
         print(f"precedents updated: {updated}")
         total += updated
     if "laws" in targets:
-        updated = backfill_laws(args.limit, dry_run=args.dry_run)
+        updated = backfill_laws(args.limit, dry_run=args.dry_run, fill_vec=args.fill_vec)
         print(f"laws updated: {updated}")
         total += updated
     return 0 if total >= 0 else 1

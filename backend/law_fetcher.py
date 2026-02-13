@@ -44,6 +44,14 @@ class LawFetcher:
         self.max_pages = int(os.getenv("LAW_MAX_PAGES") or "5")
 
     def fetch_laws(self, keyword: str, targets: Optional[List[str]] = None) -> List[Law] | str:
+        db_only = os.getenv("LAW_DB_ONLY", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+        )
+        if db_only:
+            return search_laws(keyword, limit=self.db_limit) or []
         include_terms = self._get_include_terms()
         must_title_terms = self._get_must_title_terms()
         base_query = self._get_base_query()
@@ -51,6 +59,8 @@ class LawFetcher:
             cached = search_laws(keyword, limit=self.db_limit)
             if cached:
                 return cached
+                if db_only:
+                    return []
         if self.api_key == "api필요":
             return "api필요"
         if not self.api_url:
