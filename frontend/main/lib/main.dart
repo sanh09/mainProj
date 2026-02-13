@@ -25,10 +25,7 @@ class App extends StatelessWidget {
               MaterialPageRoute(
                 builder: (_) => LoginScreen(
                   onLogin: () {
-                    // Successful auth replaces stack with upload dashboard.
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const UploadScreen()),
-                    );
+                    Navigator.of(context).pop();
                   },
                   onSignupClick: () {
                     // Signup sits on top of login and returns or continues.
@@ -42,7 +39,8 @@ class App extends StatelessWidget {
                               ),
                             );
                           },
-                          onBackToLogin: () => Navigator.of(context).pop(),
+                          onBack: () => Navigator.of(context).pop(),
+                          onLoginTap: () => Navigator.of(context).pop(),
                         ),
                       ),
                     );
@@ -60,7 +58,35 @@ class App extends StatelessWidget {
                       MaterialPageRoute(builder: (_) => const UploadScreen()),
                     );
                   },
-                  onBackToLogin: () => Navigator.of(context).pop(),
+                  onBack: () => Navigator.of(context).pop(),
+                  onLoginTap: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => LoginScreen(
+                          onLogin: () {
+                            Navigator.of(context).pop();
+                          },
+                          onSignupClick: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => SignupScreen(
+                                  onSignup: () {
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(
+                                        builder: (_) => const UploadScreen(),
+                                      ),
+                                    );
+                                  },
+                                  onBack: () => Navigator.of(context).pop(),
+                                  onLoginTap: () => Navigator.of(context).pop(),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             );

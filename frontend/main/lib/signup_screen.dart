@@ -1,29 +1,37 @@
-import 'dart:convert';
+﻿import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
+
+import 'shared/color_compat.dart';
 import 'user_session.dart';
 
 /// 회원가입 화면에서 공통으로 사용하는 색상 팔레트.
 class SignupPalette {
-  static const Color primary = Color(0xFF137FEC);
-  static const Color backgroundLight = Color(0xFFF6F7F8);
-  static const Color backgroundDark = Color(0xFF101922);
-  static const Color textDark = Color(0xFF0F172A);
-  static const Color textMuted = Color(0xFF64748B);
-  static const Color border = Color(0xFFE2E8F0);
-  static const Color fieldFill = Color(0xFFF8FAFC);
+  static const Color primary = Color(0xFFFF6B35);
+  static const Color primaryDark = Color(0xFFE85D2A);
+  static const Color backgroundLight = Color(0xFFFFFBF7);
+  static const Color backgroundDark = Color(0xFF1A1A1A);
+  static const Color cardLight = Color(0xFFFFFFFF);
+  static const Color cardDark = Color(0xFF262626);
+  static const Color inputBorder = Color(0xFFFFDCC7);
+  static const Color textDark = Color(0xFF1F2937);
+  static const Color textMuted = Color(0xFF6B7280);
 }
 
 /// 회원가입 화면.
 class SignupScreen extends StatefulWidget {
   final VoidCallback onSignup;
-  final VoidCallback onBackToLogin;
+  final VoidCallback onBack;
+  final VoidCallback onLoginTap;
 
   const SignupScreen({
     super.key,
     required this.onSignup,
-    required this.onBackToLogin,
+    required this.onBack,
+    required this.onLoginTap,
   });
 
   @override
@@ -37,6 +45,8 @@ class _SignupScreenState extends State<SignupScreen> {
   String _strengthLabel = 'Weak';
   Color _strengthColor = const Color(0xFFF87171);
   bool _isEmailValid = false;
+  static const String _googleSignupUrl = 'https://accounts.google.com/';
+  static const String _appleSignupUrl = 'https://appleid.apple.com/';
 
   // 입력 컨트롤러는 화면 생명주기에 맞춰 관리한다.
   final TextEditingController _name = TextEditingController();
@@ -60,13 +70,13 @@ class _SignupScreenState extends State<SignupScreen> {
     if (name.isEmpty || email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('모든 항목을 입력해주세요.')));
+      ).showSnackBar(const SnackBar(content: Text('이메일 형식을 확인해주세요.')));
       return;
     }
     if (!_isEmailValid) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('이메일 형식을 확인해주세요.')));
+      ).showSnackBar(const SnackBar(content: Text('모든 항목을 입력해주세요.')));
       return;
     }
 
@@ -82,20 +92,14 @@ class _SignupScreenState extends State<SignupScreen> {
       final response = await http.post(
         uri,
         headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': name,
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode({'name': name, 'email': email, 'password': password}),
       );
       final body = utf8.decode(response.bodyBytes);
-      debugPrint(
-        '[signup] status=${response.statusCode} body=$body',
-      );
+      debugPrint('[signup] status=${response.statusCode} body=$body');
 
       if (response.statusCode != 200 && response.statusCode != 201) {
         final detail = _extractErrorDetail(body);
-        final message = detail ?? '회원가입 실패: ${response.statusCode}';
+        final message = detail ?? '회원가입에 실패했습니다. (${response.statusCode})';
         throw Exception(message);
       }
 
@@ -132,7 +136,7 @@ class _SignupScreenState extends State<SignupScreen> {
         final detail = decoded['detail'];
         if (detail is String && detail.trim().isNotEmpty) {
           if (detail.contains('Email already exists')) {
-            return '이미 가입된 이메일입니다.';
+            return '\uC774\uBBF8 \uAC00\uC785\uB41C \uC774\uBA54\uC77C\uC785\uB2C8\uB2E4.';
           }
           return detail.trim();
         }
@@ -143,10 +147,19 @@ class _SignupScreenState extends State<SignupScreen> {
     return null;
   }
 
+  Future<void> _openSocialSignup(String url) async {
+    final uri = Uri.parse(url);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('가입 페이지를 열 수 없습니다.')));
+    }
+  }
 
-  /// 비밀번호 강도 점수를 계산하고 UI 상태를 갱신한다.
+  /// 비밀번호 강도 점수를 계산하고 UI를 갱신한다.
   void _updateStrength(String value) {
-    // 문자 조합 조건을 점수로 환산한다.
+    // 문자 조합 조건으로 점수를 계산한다.
     final hasLower = value.contains(RegExp(r'[a-z]'));
     final hasUpper = value.contains(RegExp(r'[A-Z]'));
     final hasDigit = value.contains(RegExp(r'[0-9]'));
@@ -162,16 +175,16 @@ class _SignupScreenState extends State<SignupScreen> {
     Color color;
 
     if (score <= 1) {
-      label = 'Weak';
+      label = '\uc57d\ud568';
       color = const Color(0xFFF87171);
     } else if (score == 2) {
-      label = 'Medium';
+      label = '\uc911\uac04';
       color = const Color(0xFFFACC15);
     } else if (score == 3) {
-      label = 'Strong';
+      label = '\uac15\ud568';
       color = const Color(0xFF22C55E);
     } else {
-      label = 'Very Strong';
+      label = '\ub9e4\uc6b0 \uac15\ud568';
       color = const Color(0xFF16A34A);
     }
 
@@ -185,163 +198,228 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? SignupPalette.backgroundDark
+        : SignupPalette.backgroundLight;
+
     return Scaffold(
-      backgroundColor: SignupPalette.backgroundLight,
+      backgroundColor: backgroundColor,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  // 상단 헤더 영역.
-                  _Header(onBack: widget.onBackToLogin),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const _IntroSection(),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Column(
-                              children: [
-                                // 이름 입력.
-                                _InputGroup(
-                                  label: '이름',
-                                  child: _InputField(
-                                    controller: _name,
-                                    hintText: '예) 장예슬',
-                                    suffixIcon: Icons.person_outline_rounded,
-                                    borderColor: SignupPalette.border,
-                                    fillColor: SignupPalette.fieldFill,
-                                  ),
-                                ),
-                                const SizedBox(height: 18),
-                                // 이메일 입력과 유효성 표시.
-                                _InputGroup(
-                                  label: '이메일',
-                                  child: _InputField(
-                                    controller: _email,
-                                    hintText: 'name@google.com',
-                                    keyboardType: TextInputType.emailAddress,
-                                    onChanged: _updateEmail,
-                                    suffixIcon: _email.text.isEmpty
-                                        ? null
-                                        : (_isEmailValid
-                                              ? Icons.check_circle
-                                              : Icons.warning_amber_rounded),
-                                    suffixColor: _isEmailValid
-                                        ? const Color(0xFF22C55E)
-                                        : const Color(0xFFEF4444),
-                                    borderColor: SignupPalette.border,
-                                    fillColor: SignupPalette.fieldFill,
-                                  ),
-                                ),
-                                const SizedBox(height: 18),
-                                // 비밀번호 입력과 강도 계산.
-                                _InputGroup(
-                                  label: '비밀번호',
-                                  child: _PasswordField(
-                                    controller: _password,
-                                    hintText: '최소 8자 이상',
-                                    showPassword: _showPassword,
-                                    onToggle: () => setState(
-                                      () => _showPassword = !_showPassword,
+        child: Stack(
+          children: [
+            const _AmbientShapes(),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  children: [
+                    _Header(onBack: widget.onBack),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _IntroSection(isDark: isDark),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                              ),
+                              child: Column(
+                                children: [
+                                  _InputGroup(
+                                    label: '\uc774\ub984',
+                                    child: _InputField(
+                                      controller: _name,
+                                      hintText: '예 : 장예슬',
+                                      suffixIcon: Icons.person,
+                                      borderColor: SignupPalette.inputBorder,
+                                      fillColor: isDark
+                                          ? SignupPalette.cardDark
+                                          : SignupPalette.cardLight,
                                     ),
-                                    onChanged: _updateStrength,
                                   ),
-                                ),
-                                const SizedBox(height: 10),
-                                // 비밀번호 강도 표시.
-                                _StrengthIndicator(
-                                  score: _strengthScore,
-                                  label: _strengthLabel,
-                                  labelColor: _strengthColor,
-                                ),
-                              ],
+                                  const SizedBox(height: 18),
+                                  _InputGroup(
+                                    label: '이메일',
+                                    child: _InputField(
+                                      controller: _email,
+                                      hintText: 'name@naver.com',
+                                      keyboardType: TextInputType.emailAddress,
+                                      onChanged: _updateEmail,
+                                      suffixIcon: _email.text.isEmpty
+                                          ? null
+                                          : (_isEmailValid
+                                                ? Icons.check_circle
+                                                : Icons.warning_amber_rounded),
+                                      suffixColor: _isEmailValid
+                                          ? SignupPalette.primary
+                                          : const Color(0xFFEF4444),
+                                      borderColor: _email.text.isEmpty
+                                          ? SignupPalette.inputBorder
+                                          : SignupPalette.primary,
+                                      fillColor: isDark
+                                          ? SignupPalette.cardDark
+                                          : SignupPalette.cardLight,
+                                      showRing: _email.text.isNotEmpty,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 18),
+                                  _InputGroup(
+                                    label: '\ube44\ubc00\ubc88\ud638',
+                                    child: _PasswordField(
+                                      controller: _password,
+                                      hintText:
+                                          '8\uc790 \uc774\uc0c1 \uc785\ub825',
+                                      showPassword: _showPassword,
+                                      onToggle: () => setState(
+                                        () => _showPassword = !_showPassword,
+                                      ),
+                                      onChanged: _updateStrength,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _StrengthIndicator(
+                                    score: _strengthScore,
+                                    label: _strengthLabel,
+                                    labelColor: _strengthColor,
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                            child: Column(
-                              children: [
-                                // 보안 안내 문구.
-                                const _SecurityRow(),
-                                const SizedBox(height: 16),
-                                // 가입 버튼.
-                                _PrimaryButton(
-                                  label: '계정생성',
-                                  onPressed: _handleSignup,
-                                ),
-                                // 소셜 로그인 영역 시작.
-                                const SizedBox(height: 20),
-                                const _DividerLabel(label: '소셜 계정으로 가입'),
-                                const SizedBox(height: 16),
-                                // 로그인 화면으로 돌아가기.
-                                Row(
-                                  children: const [
-                                    Expanded(
-                                      child: _SocialButton(
-                                        label: 'Apple',
-                                        icon: _AppleIcon(),
-                                      ),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Expanded(
-                                      child: _SocialButton(
-                                        label: 'Google',
-                                        icon: _GoogleIcon(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Text(
-                                      '이미 계정이 있으신가요? ',
-                                      style: TextStyle(
-                                        color: SignupPalette.textMuted,
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: widget.onBackToLogin,
-                                      child: const Text(
-                                        '로그인',
-                                        style: TextStyle(
-                                          color: SignupPalette.primary,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 12.5,
+                            const SizedBox(height: 12),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                              child: Column(
+                                children: [
+                                  const _SecurityRow(),
+                                  const SizedBox(height: 16),
+                                  _PrimaryButton(
+                                    label:
+                                        '\uacc4\uc815 \uc0dd\uc131\ud558\uae30',
+                                    onPressed: _handleSignup,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  const _DividerLabel(
+                                    label:
+                                        '\ub610\ub294 \ub2e4\uc74c\uc73c\ub85c \uac00\uc785',
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _SocialButton(
+                                          label: 'Apple',
+                                          icon: _AppleIcon(),
+                                          onPressed: () => _openSocialSignup(
+                                            _appleSignupUrl,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _SocialButton(
+                                          label: 'Google',
+                                          icon: _GoogleIcon(),
+                                          onPressed: () => _openSocialSignup(
+                                            _googleSignupUrl,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        '\uc774\ubbf8 \uacc4\uc815\uc774 \uc788\uc73c\uc2e0\uac00\uc694? ',
+                                        style: TextStyle(
+                                          color: isDark
+                                              ? const Color(0xFF9CA3AF)
+                                              : SignupPalette.textMuted,
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      GestureDetector(
+                                        onTap: widget.onLoginTap,
+                                        child: const Text(
+                                          '로그인',
+                                          style: TextStyle(
+                                            color: SignupPalette.primary,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 상단 헤더(뒤로가기/타이틀).
+/// 상단 헤더(뒤로가기 버튼 포함).
+
+class _AmbientShapes extends StatelessWidget {
+  const _AmbientShapes();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Positioned(
+            top: -100,
+            right: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [Color(0x33FFA07A), Color(0x00FFFBF7)],
+                  radius: 0.7,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -50,
+            left: -50,
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [Color(0x1AFF6B35), Color(0x00FFFBF7)],
+                  radius: 0.7,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   final VoidCallback onBack;
 
@@ -349,26 +427,28 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: Colors.white.withValues(alpha: 0.95),
       child: Row(
         children: [
           IconButton(
             onPressed: onBack,
             icon: const Icon(Icons.arrow_back_rounded),
-            color: SignupPalette.textDark,
+            color: isDark ? Colors.white : SignupPalette.textDark,
             style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFFF1F5F9),
+              backgroundColor: isDark
+                  ? const Color(0xFF262626)
+                  : const Color(0xFFFDF0E8),
               shape: const CircleBorder(),
             ),
           ),
-          const Expanded(
+          Expanded(
             child: Center(
               child: Text(
-                '가입하기',
+                '\ud68c\uc6d0\uac00\uc785',
                 style: TextStyle(
-                  color: SignupPalette.textDark,
+                  color: isDark ? Colors.white : SignupPalette.textDark,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                 ),
@@ -384,29 +464,31 @@ class _Header extends StatelessWidget {
 
 /// 회원가입 안내 문구 영역.
 class _IntroSection extends StatelessWidget {
-  const _IntroSection();
+  final bool isDark;
+
+  const _IntroSection({required this.isDark});
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(24, 20, 24, 18),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '계정을 생성하세요',
+            '\uacc4\uc815 \uc0dd\uc131\ud558\uae30',
             style: TextStyle(
-              color: SignupPalette.textDark,
+              color: isDark ? Colors.white : SignupPalette.textDark,
               fontSize: 26,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.4,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'AI를 활용한 계약서 분석을 시작하세요.',
+            'AI와 함께 안전하게 계약 분석을 시작해보세요.',
             style: TextStyle(
-              color: SignupPalette.textMuted,
+              color: isDark ? const Color(0xFF9CA3AF) : SignupPalette.textMuted,
               fontSize: 14.5,
               height: 1.4,
               fontWeight: FontWeight.w500,
@@ -427,13 +509,14 @@ class _InputGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: SignupPalette.textDark,
+          style: TextStyle(
+            color: isDark ? Colors.white : SignupPalette.textDark,
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
           ),
@@ -455,6 +538,7 @@ class _InputField extends StatelessWidget {
   final Color borderColor;
   final Color fillColor;
   final ValueChanged<String>? onChanged;
+  final bool showRing;
 
   const _InputField({
     required this.controller,
@@ -465,24 +549,28 @@ class _InputField extends StatelessWidget {
     required this.borderColor,
     required this.fillColor,
     this.onChanged,
+    this.showRing = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderWidth = showRing ? 1.4 : 1.0;
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       onChanged: onChanged,
-      style: const TextStyle(
-        color: SignupPalette.textDark,
+      style: TextStyle(
+        color: isDark ? Colors.white : SignupPalette.textDark,
         fontWeight: FontWeight.w600,
         fontSize: 13.5,
       ),
-      // 입력 필드 공통 스타일.
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: TextStyle(
-          color: SignupPalette.textMuted.withValues(alpha: 0.7),
+          color: isDark
+              ? const Color(0xFF9CA3AF)
+              : SignupPalette.textMuted.withValues(alpha: 0.7),
           fontSize: 13,
         ),
         filled: true,
@@ -492,15 +580,21 @@ class _InputField extends StatelessWidget {
             : Icon(suffixIcon, color: suffixColor ?? SignupPalette.textMuted),
         contentPadding: const EdgeInsets.symmetric(
           vertical: 14,
-          horizontal: 12,
+          horizontal: 16,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: borderColor),
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF374151) : borderColor,
+            width: borderWidth,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: borderColor, width: 1.2),
+          borderRadius: BorderRadius.circular(24),
+          borderSide: const BorderSide(
+            color: SignupPalette.primary,
+            width: 1.4,
+          ),
         ),
       ),
     );
@@ -525,46 +619,50 @@ class _PasswordField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: controller,
       obscureText: !showPassword,
       onChanged: onChanged,
-      style: const TextStyle(
-        color: SignupPalette.textDark,
+      style: TextStyle(
+        color: isDark ? Colors.white : SignupPalette.textDark,
         fontWeight: FontWeight.w600,
         fontSize: 13.5,
       ),
-      // 비밀번호 필드 스타일 및 토글 아이콘 정의.
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: TextStyle(
-          color: SignupPalette.textMuted.withValues(alpha: 0.7),
+          color: isDark
+              ? const Color(0xFF9CA3AF)
+              : SignupPalette.textMuted.withValues(alpha: 0.7),
           fontSize: 13,
         ),
         filled: true,
-        fillColor: SignupPalette.fieldFill,
+        fillColor: isDark ? SignupPalette.cardDark : SignupPalette.cardLight,
         suffixIcon: IconButton(
           icon: Icon(
             showPassword
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
-            color: SignupPalette.textMuted,
+            color: isDark ? const Color(0xFF9CA3AF) : SignupPalette.textMuted,
           ),
           onPressed: onToggle,
         ),
         contentPadding: const EdgeInsets.symmetric(
           vertical: 14,
-          horizontal: 12,
+          horizontal: 16,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: SignupPalette.border),
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF374151) : SignupPalette.inputBorder,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(24),
           borderSide: const BorderSide(
             color: SignupPalette.primary,
-            width: 1.2,
+            width: 1.4,
           ),
         ),
       ),
@@ -572,7 +670,7 @@ class _PasswordField extends StatelessWidget {
   }
 }
 
-/// 비밀번호 강도 표시 바와 라벨.
+/// 비밀번호 강도 표시 바.
 class _StrengthIndicator extends StatelessWidget {
   final int score;
   final String label;
@@ -586,22 +684,23 @@ class _StrengthIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 단계별 색상 팔레트.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = [
       const Color(0xFFF87171),
       const Color(0xFFFACC15),
       const Color(0xFF22C55E),
       const Color(0xFF16A34A),
     ];
+    final emptyColor = isDark
+        ? const Color(0xFF374151)
+        : const Color(0xFFE2E8F0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: List.generate(4, (index) {
-            final barColor = index < score
-                ? colors[index]
-                : const Color(0xFFE2E8F0);
+            final barColor = index < score ? colors[index] : emptyColor;
             return Expanded(
               child: Padding(
                 padding: EdgeInsets.only(right: index == 3 ? 0 : 6),
@@ -619,9 +718,9 @@ class _StrengthIndicator extends StatelessWidget {
         const SizedBox(height: 6),
         Text.rich(
           TextSpan(
-            text: 'Strength: ',
-            style: const TextStyle(
-              color: SignupPalette.textMuted,
+            text: '비밀번호 강도: ',
+            style: TextStyle(
+              color: isDark ? const Color(0xFF9CA3AF) : SignupPalette.textMuted,
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
             ),
@@ -647,16 +746,20 @@ class _SecurityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 보안 메시지 한 줄 구성.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
-        Icon(Icons.lock_outline, size: 16, color: Color(0xFF94A3B8)),
-        SizedBox(width: 6),
+      children: [
+        Icon(
+          Icons.lock_outline,
+          size: 16,
+          color: isDark ? const Color(0xFF9CA3AF) : SignupPalette.textMuted,
+        ),
+        const SizedBox(width: 6),
         Text(
-          '비밀번호 보안 암호화 및 보호',
+          '은행 수준의 보안 암호화 적용',
           style: TextStyle(
-            color: Color(0xFF94A3B8),
+            color: isDark ? const Color(0xFF9CA3AF) : SignupPalette.textMuted,
             fontSize: 11.5,
             fontWeight: FontWeight.w600,
           ),
@@ -675,26 +778,38 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 화면 폭을 채우는 기본 액션 버튼.
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: SignupPalette.primary,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          elevation: 3,
-          shadowColor: SignupPalette.primary.withValues(alpha: 0.2),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 15.5,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(24),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [SignupPalette.primary, Color(0xFFFF9F43)],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: SignupPalette.primary.withValues(alpha: 0.22),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15.5,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -710,21 +825,31 @@ class _DividerLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 라벨을 가운데 두고 좌우로 구분선 표시.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
-        const Expanded(child: Divider(color: SignupPalette.border, height: 1)),
+        Expanded(
+          child: Divider(
+            color: isDark ? const Color(0xFF374151) : const Color(0xFFE5E7EB),
+            height: 1,
+          ),
+        ),
         const SizedBox(width: 10),
         Text(
           label,
-          style: const TextStyle(
-            color: SignupPalette.textMuted,
+          style: TextStyle(
+            color: isDark ? const Color(0xFF9CA3AF) : SignupPalette.textMuted,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(width: 10),
-        const Expanded(child: Divider(color: SignupPalette.border, height: 1)),
+        Expanded(
+          child: Divider(
+            color: isDark ? const Color(0xFF374151) : const Color(0xFFE5E7EB),
+            height: 1,
+          ),
+        ),
       ],
     );
   }
@@ -734,19 +859,28 @@ class _DividerLabel extends StatelessWidget {
 class _SocialButton extends StatelessWidget {
   final String label;
   final Widget icon;
+  final VoidCallback onPressed;
 
-  const _SocialButton({required this.label, required this.icon});
+  const _SocialButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return OutlinedButton(
-      // 실제 소셜 로그인 연결은 추후 추가.
-      onPressed: () {},
+      onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        side: const BorderSide(color: SignupPalette.border),
-        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        side: BorderSide(
+          color: isDark ? const Color(0xFF374151) : SignupPalette.inputBorder,
+        ),
+        backgroundColor: isDark
+            ? SignupPalette.cardDark
+            : SignupPalette.cardLight,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -755,8 +889,8 @@ class _SocialButton extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             label,
-            style: const TextStyle(
-              color: SignupPalette.textDark,
+            style: TextStyle(
+              color: isDark ? Colors.white : SignupPalette.textDark,
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),

@@ -1,9 +1,108 @@
-import 'dart:convert';
+﻿import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'shared/dashboard_palette.dart';
+import 'shared/color_compat.dart';
 import 'user_session.dart';
+
+class ProfileEditPalette {
+  static const Color primary = Color(0xFFFF8A00);
+  static const Color primaryDark = Color(0xFFE67900);
+  static const Color backgroundLight = Color(0xFFFFF4E6);
+  static const Color backgroundDark = Color(0xFF1A1612);
+  static const Color cardLight = Color(0xB3FFFFFF);
+  static const Color cardDark = Color(0xCC2D2823);
+  static const Color textDark = Color(0xFF1F2937);
+  static const Color textMuted = Color(0xFF6B7280);
+}
+
+class _Blob extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _Blob({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 60),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+
+  const _GlassCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? ProfileEditPalette.cardDark : ProfileEditPalette.cardLight,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? const Color(0xFF374151) : const Color(0x66FFFFFF),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _EditStatusBar extends StatelessWidget {
+  final bool isDark;
+
+  const _EditStatusBar({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isDark ? Colors.white : ProfileEditPalette.textDark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 10, 22, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '9:41',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+          Row(
+            children: [
+              Icon(Icons.signal_cellular_alt_rounded, color: color, size: 18),
+              const SizedBox(width: 4),
+              Icon(Icons.wifi_rounded, color: color, size: 18),
+              const SizedBox(width: 4),
+              Icon(Icons.battery_full_rounded, color: color, size: 18),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// 프로필 수정 화면.
 class ProfileEditScreen extends StatefulWidget {
@@ -261,16 +360,45 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? ProfileEditPalette.backgroundDark
+        : ProfileEditPalette.backgroundLight;
     return Scaffold(
-      backgroundColor: DashboardPalette.backgroundLight,
+      backgroundColor: backgroundColor,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 430),
-            child: Container(
-              color: Colors.white,
-              child: Column(
+            child: Stack(
+              children: [
+                Positioned(
+                  top: -50,
+                  right: -50,
+                  child: _Blob(
+                    size: 240,
+                    color: ProfileEditPalette.primary.withValues(alpha: 0.2),
+                  ),
+                ),
+                Positioned(
+                  top: 260,
+                  left: -80,
+                  child: _Blob(
+                    size: 300,
+                    color: const Color(0xFFFFC392).withValues(alpha: 0.35),
+                  ),
+                ),
+                Positioned(
+                  bottom: -40,
+                  right: -100,
+                  child: _Blob(
+                    size: 260,
+                    color: ProfileEditPalette.primary.withValues(alpha: 0.12),
+                  ),
+                ),
+                Column(
                 children: [
+                  _EditStatusBar(isDark: isDark),
                   _EditAppBar(onCancel: () => Navigator.of(context).pop()),
                   Expanded(
                     child: _loading
@@ -290,44 +418,52 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                     ),
                                   ),
                                 ),
-                              _ProfilePhoto(onTap: () {}),
-                              const SizedBox(height: 24),
-                              _InputGroup(
-                                label: '이름',
-                                child: _TextInput(
-                                  controller: _nameController,
-                                  hintText: '이름을 입력하세요.',
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              _InputGroup(
-                                label: '이메일',
-                                child: _TextInput(
-                                  controller: _emailController,
-                                  hintText: '이메일을 입력하세요.',
-                                  keyboardType: TextInputType.emailAddress,
-                                  readOnly: true,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              _InputGroup(
-                                label: '비밀번호',
-                                child: _PasswordInput(
-                                  controller: _passwordController,
-                                  hintText: '새 비밀번호',
-                                  obscureText: _hidePassword,
-                                  onToggle: () => setState(
-                                    () => _hidePassword = !_hidePassword,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '보안을 위해 정기적인 비밀번호 변경을 권장합니다.',
-                                style: TextStyle(
-                                  color: DashboardPalette.textMuted,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
+                              _GlassCard(
+                                child: Column(
+                                  children: [
+                                    _ProfilePhoto(onTap: () {}),
+                                    const SizedBox(height: 24),
+                                    _InputGroup(
+                                      label: '이름',
+                                      child: _TextInput(
+                                        controller: _nameController,
+                                        hintText: '이름을 입력하세요.',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    _InputGroup(
+                                      label: '이메일',
+                                      child: _TextInput(
+                                        controller: _emailController,
+                                        hintText: '이메일을 입력하세요.',
+                                        keyboardType: TextInputType.emailAddress,
+                                        readOnly: true,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    _InputGroup(
+                                      label: '비밀번호',
+                                      child: _PasswordInput(
+                                        controller: _passwordController,
+                                        hintText: '새 비밀번호',
+                                        obscureText: _hidePassword,
+                                        onToggle: () => setState(
+                                          () => _hidePassword = !_hidePassword,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '보안을 위해 정기적인 비밀번호 변경을 권장합니다.',
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? const Color(0xFF9CA3AF)
+                                            : ProfileEditPalette.textMuted,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -336,6 +472,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   _SaveBar(onSave: _saveProfile, isSaving: _saving),
                 ],
               ),
+              ],
             ),
           ),
         ),
@@ -351,10 +488,15 @@ class _EditAppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF374151) : const Color(0xFFF1F5F9),
+          ),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -362,7 +504,7 @@ class _EditAppBar extends StatelessWidget {
           TextButton(
             onPressed: onCancel,
             style: TextButton.styleFrom(
-              foregroundColor: DashboardPalette.primary,
+              foregroundColor: ProfileEditPalette.primary,
               padding: EdgeInsets.zero,
             ),
             child: const Text(
@@ -370,10 +512,10 @@ class _EditAppBar extends StatelessWidget {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
-          const Text(
+          Text(
             '프로필 수정',
             style: TextStyle(
-              color: DashboardPalette.textDark,
+              color: isDark ? Colors.white : ProfileEditPalette.textDark,
               fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
@@ -392,6 +534,7 @@ class _ProfilePhoto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Stack(
@@ -402,13 +545,15 @@ class _ProfilePhoto extends StatelessWidget {
               height: 96,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFF1F5F9),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                color: isDark ? const Color(0xFF1F2937) : const Color(0xFFF1F5F9),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF374151) : const Color(0xFFE2E8F0),
+                ),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.account_circle,
                 size: 50,
-                color: Color(0xFF9CA3AF),
+                color: isDark ? const Color(0xFFCBD5F5) : const Color(0xFF9CA3AF),
               ),
             ),
             Positioned(
@@ -421,9 +566,12 @@ class _ProfilePhoto extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: DashboardPalette.primary,
+                    color: ProfileEditPalette.primary,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF1F2937) : Colors.white,
+                      width: 2,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.12),
@@ -446,7 +594,7 @@ class _ProfilePhoto extends StatelessWidget {
         Text(
           '프로필 사진 변경',
           style: TextStyle(
-            color: DashboardPalette.textMuted,
+            color: isDark ? const Color(0xFF9CA3AF) : ProfileEditPalette.textMuted,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
@@ -464,13 +612,14 @@ class _InputGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: DashboardPalette.textDark,
+          style: TextStyle(
+            color: isDark ? Colors.white : ProfileEditPalette.textDark,
             fontSize: 13,
             fontWeight: FontWeight.w800,
           ),
@@ -497,34 +646,38 @@ class _TextInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       readOnly: readOnly,
-      style: const TextStyle(
-        color: DashboardPalette.textDark,
+      style: TextStyle(
+        color: isDark ? const Color(0xFFF8FAFC) : ProfileEditPalette.textDark,
         fontSize: 13.5,
         fontWeight: FontWeight.w600,
       ),
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: TextStyle(
-          color: DashboardPalette.textMuted.withValues(alpha: 0.7),
+          color: (isDark ? const Color(0xFF9CA3AF) : ProfileEditPalette.textMuted)
+              .withValues(alpha: 0.7),
           fontSize: 13,
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: isDark ? const Color(0xFF1F2937) : Colors.white,
         contentPadding: const EdgeInsets.symmetric(
           vertical: 14,
           horizontal: 14,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFDBE0E6)),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF374151) : const Color(0xFFDBE0E6),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: DashboardPalette.primary),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ProfileEditPalette.primary),
         ),
       ),
     );
@@ -546,39 +699,43 @@ class _PasswordInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: controller,
       obscureText: obscureText,
-      style: const TextStyle(
-        color: DashboardPalette.textDark,
+      style: TextStyle(
+        color: isDark ? const Color(0xFFF8FAFC) : ProfileEditPalette.textDark,
         fontSize: 13.5,
         fontWeight: FontWeight.w600,
       ),
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: TextStyle(
-          color: DashboardPalette.textMuted.withValues(alpha: 0.7),
+          color: (isDark ? const Color(0xFF9CA3AF) : ProfileEditPalette.textMuted)
+              .withValues(alpha: 0.7),
           fontSize: 13,
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: isDark ? const Color(0xFF1F2937) : Colors.white,
         contentPadding: const EdgeInsets.symmetric(
           vertical: 14,
           horizontal: 14,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFDBE0E6)),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF374151) : const Color(0xFFDBE0E6),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: DashboardPalette.primary),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ProfileEditPalette.primary),
         ),
         suffixIcon: IconButton(
           onPressed: onToggle,
           icon: Icon(
             obscureText ? Icons.visibility_off : Icons.visibility,
-            color: const Color(0xFF9CA3AF),
+            color: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF9CA3AF),
             size: 20,
           ),
         ),
@@ -595,11 +752,16 @@ class _SaveBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
-        color: Colors.white,
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: isDark ? const Color(0xFF374151) : const Color(0xFFF1F5F9),
+          ),
+        ),
+        color: isDark ? const Color(0xCC1A1612) : const Color(0xCCFFFFFF),
       ),
       child: SizedBox(
         width: double.infinity,
@@ -607,12 +769,12 @@ class _SaveBar extends StatelessWidget {
         child: ElevatedButton(
           onPressed: isSaving ? null : onSave,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0F5AB2),
+            backgroundColor: ProfileEditPalette.primary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
             elevation: 6,
-            shadowColor: const Color(0xFF0F5AB2).withValues(alpha: 0.2),
+            shadowColor: ProfileEditPalette.primary.withValues(alpha: 0.25),
           ),
           child: const Text(
             '변경사항 저장',
@@ -627,3 +789,5 @@ class _SaveBar extends StatelessWidget {
     );
   }
 }
+
+

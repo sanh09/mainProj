@@ -1,14 +1,486 @@
-import 'dart:convert';
+﻿import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import '../login_screen.dart';
+import '../loading.dart';
 import '../profile_edit_screen.dart';
-import '../shared/dashboard_palette.dart';
+import '../result.dart';
+import '../shared/color_compat.dart';
 import '../signup_screen.dart';
 import '../user_session.dart';
 import '../welcome_screen.dart';
+import 'history_screen.dart';
 import 'upload_screen.dart';
+
+class SettingsPalette {
+  static const Color primary = Color(0xFFFF8A00);
+  static const Color primaryDark = Color(0xFFE67900);
+  static const Color backgroundLight = Color(0xFFFFF4E6);
+  static const Color backgroundDark = Color(0xFF1A1612);
+  static const Color textDark = Color(0xFF1F2937);
+  static const Color textMuted = Color(0xFF6B7280);
+}
+
+class _Blob extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _Blob({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 60),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+
+  const _GlassCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xCC2D2823) : const Color(0xB3FFFFFF),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? const Color(0xFF374151) : const Color(0x66FFFFFF),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  final String initials;
+  final bool isDark;
+
+  const _ProfileAvatar({required this.initials, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          width: 60,
+          height: 60,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [
+                isDark ? const Color(0xFF374151) : const Color(0xFFFFEDD5),
+                isDark ? const Color(0xFF4B5563) : const Color(0xFFFED7AA),
+              ],
+            ),
+          ),
+          child: CircleAvatar(
+            backgroundColor: isDark ? const Color(0xFF1F2937) : Colors.white,
+            child: Text(
+              initials.isNotEmpty ? initials.characters.first : 'U',
+              style: TextStyle(
+                color: isDark ? Colors.white : SettingsPalette.textDark,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+
+  const _SectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isDark ? const Color(0xFF9CA3AF) : SettingsPalette.textMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String label;
+  final String? trailingLabel;
+  final bool isLast;
+
+  const _SettingsTile({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.label,
+    this.trailingLabel,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: isLast
+              ? BorderSide.none
+              : BorderSide(
+                  color: isDark
+                      ? const Color(0x334B5563)
+                      : const Color(0xFFE5E7EB),
+                ),
+        ),
+      ),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        onTap: () {},
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: iconBg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+        title: Text(
+          label,
+          style: TextStyle(
+            color: isDark ? Colors.white : SettingsPalette.textDark,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (trailingLabel != null)
+              Text(
+                trailingLabel!,
+                style: TextStyle(
+                  color: isDark
+                      ? const Color(0xFF9CA3AF)
+                      : SettingsPalette.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 14,
+              color: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsToggleTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _SettingsToggleTile({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? const Color(0x334B5563) : const Color(0xFFE5E7EB),
+          ),
+        ),
+      ),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: iconBg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+        title: Text(
+          label,
+          style: TextStyle(
+            color: isDark ? Colors.white : SettingsPalette.textDark,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+        trailing: Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: SettingsPalette.primary,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsLogoutTile extends StatelessWidget {
+  final VoidCallback onLogout;
+
+  const _SettingsLogoutTile({required this.onLogout});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onLogout,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: Text(
+            '로그아웃',
+            style: TextStyle(
+              color: Colors.red.shade400,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DisclaimerCard extends StatelessWidget {
+  final bool isDark;
+
+  const _DisclaimerCard({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1F2937) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '면책 조항 (Disclaimer)',
+                  style: TextStyle(
+                    color: isDark
+                        ? const Color(0xFFE2E8F0)
+                        : const Color(0xFF334155),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'CanSi는 법률 자문 서비스가 아닙니다. AI가 제공하는 검토 결과는 참고용이며 실제 계약 체결 전 반드시 법률 전문가의 확인을 거치시기 바랍니다.',
+                  style: TextStyle(
+                    color: isDark
+                        ? const Color(0xFF9CA3AF)
+                        : const Color(0xFF64748B),
+                    fontSize: 11.5,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsBottomNav extends StatelessWidget {
+  final VoidCallback onHomeTap;
+  final VoidCallback onHistoryTap;
+  final VoidCallback onCameraTap;
+
+  const _SettingsBottomNav({
+    required this.onHomeTap,
+    required this.onHistoryTap,
+    required this.onCameraTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xCC0F172A) : const Color(0xCCFFFFFF),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
+        ),
+        border: Border.all(
+          color: isDark ? const Color(0xFF1F2937) : const Color(0xFFE2E8F0),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 20,
+            offset: Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _BottomNavItem(
+            icon: Icons.home_rounded,
+            label: '홈',
+            active: false,
+            onTap: onHomeTap,
+          ),
+          _BottomNavItem(
+            icon: Icons.history_rounded,
+            label: '기록',
+            active: false,
+            onTap: onHistoryTap,
+          ),
+          GestureDetector(
+            onTap: onCameraTap,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: SettingsPalette.primary,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: SettingsPalette.primary.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.photo_camera_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
+            ),
+          ),
+          const _BottomNavItem(
+            icon: Icons.smart_toy_rounded,
+            label: 'AI 상담',
+            active: false,
+          ),
+          const _BottomNavItem(
+            icon: Icons.person_rounded,
+            label: '마이페이지',
+            active: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomNavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback? onTap;
+
+  const _BottomNavItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? SettingsPalette.primary : const Color(0xFF94A3B8);
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 26, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _ProfileData {
   final String name;
@@ -28,6 +500,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late final String? _email;
   late Future<_ProfileData?> _profileFuture;
+  bool _notificationsEnabled = true;
 
   @override
   void initState() {
@@ -61,11 +534,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final data = jsonDecode(body) as Map<String, dynamic>;
     final profile = _unwrapProfileMap(data);
     final name =
-        _pickString(profile, const ['name', 'username', 'user_name', 'full_name', 'fullName', 'nickname', 'display_name', 'displayName']) ??
-        _pickString(data, const ['name', 'username', 'user_name', 'full_name', 'fullName', 'nickname', 'display_name', 'displayName']);
+        _pickString(profile, const [
+          'name',
+          'username',
+          'user_name',
+          'full_name',
+          'fullName',
+          'nickname',
+          'display_name',
+          'displayName',
+        ]) ??
+        _pickString(data, const [
+          'name',
+          'username',
+          'user_name',
+          'full_name',
+          'fullName',
+          'nickname',
+          'display_name',
+          'displayName',
+        ]);
     final emailValue =
-        _pickString(profile, const ['email', 'email_address', 'emailAddress', 'mail']) ??
-        _pickString(data, const ['email', 'email_address', 'emailAddress', 'mail']);
+        _pickString(profile, const [
+          'email',
+          'email_address',
+          'emailAddress',
+          'mail',
+        ]) ??
+        _pickString(data, const [
+          'email',
+          'email_address',
+          'emailAddress',
+          'mail',
+        ]);
     return _ProfileData(
       name: (name == null || name.isEmpty) ? email : name,
       email: (emailValue == null || emailValue.isEmpty) ? email : emailValue,
@@ -100,515 +601,688 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return null;
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? SettingsPalette.backgroundDark
+        : SettingsPalette.backgroundLight;
     return Scaffold(
-      backgroundColor: DashboardPalette.backgroundLight,
+      backgroundColor: backgroundColor,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: Container(
-              color: Colors.white,
-              child: FutureBuilder<_ProfileData?>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  // Fall back to cached email if API data is missing.
-                  final profile = snapshot.data;
-                  final displayName = profile?.name ?? 'User';
-                  final displayEmail = profile?.email ?? (_email ?? '');
-                  return Column(
-                    children: [
-                      _ProfileAppBar(onBack: () => Navigator.of(context).pop()),
-                      Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.only(bottom: 24),
-                          children: [
-                            // Inline error hint while keeping layout intact.
-                            if (snapshot.hasError)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  12,
-                                  16,
-                                  0,
-                                ),
-                                child: Text(
-                                  'Failed to load profile: ${snapshot.error}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFDC2626),
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+        bottom: false,
+        child: Stack(
+          children: [
+            Positioned(
+              top: -50,
+              right: -50,
+              child: _Blob(
+                size: 240,
+                color: SettingsPalette.primary.withValues(alpha: 0.2),
+              ),
+            ),
+            Positioned(
+              top: 260,
+              left: -80,
+              child: _Blob(
+                size: 300,
+                color: const Color(0xFFFFC392).withValues(alpha: 0.35),
+              ),
+            ),
+            Positioned(
+              bottom: -40,
+              right: -100,
+              child: _Blob(
+                size: 260,
+                color: SettingsPalette.primary.withValues(alpha: 0.12),
+              ),
+            ),
+            FutureBuilder<_ProfileData?>(
+              future: _profileFuture,
+              builder: (context, snapshot) {
+                final profile = snapshot.data;
+                final displayName = profile?.name ?? 'User';
+                final displayEmail = profile?.email ?? (_email ?? '');
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '설정',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white
+                                      : SettingsPalette.textDark,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
-                            _ProfileHeader(
-                              name: displayName,
-                              email: displayEmail,
-                            ),
-                            _ProfileInfoSection(
-                              name: displayName,
-                              email: displayEmail,
-                            ),
-                            _ProfileEditButton(
-                              onEdit: () async {
-                                final updated = await Navigator.of(context)
-                                    .push<bool>(
-                                  MaterialPageRoute(
-                                    builder: (_) => const ProfileEditScreen(),
-                                  ),
-                                );
-                                if (updated == true && mounted) {
-                                  setState(() {
-                                    final email = _email;
-                                    if (email != null && email.isNotEmpty) {
-                                      _profileFuture = _fetchProfile(email);
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF1F2937)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(999),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.settings,
+                                  color: isDark
+                                      ? const Color(0xFFE2E8F0)
+                                      : const Color(0xFF475569),
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          _GlassCard(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    _ProfileAvatar(
+                                      initials: displayName,
+                                      isDark: isDark,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayName,
+                                          style: TextStyle(
+                                            color: isDark
+                                                ? Colors.white
+                                                : SettingsPalette.textDark,
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        SizedBox(
+                                          width: 150,
+                                          child: Text(
+                                            displayEmail,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: isDark
+                                                  ? const Color(0xFF9CA3AF)
+                                                  : SettingsPalette.textMuted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                TextButton(
+                                  onPressed: () async {
+                                    final updated = await Navigator.of(context)
+                                        .push<bool>(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const ProfileEditScreen(),
+                                          ),
+                                        );
+                                    if (updated == true && mounted) {
+                                      setState(() {
+                                        final email = _email;
+                                        if (email != null && email.isNotEmpty) {
+                                          _profileFuture = _fetchProfile(email);
+                                        }
+                                      });
                                     }
-                                  });
-                                }
-                              },
-                            ),
-                            const _SettingsSection(),
-                            const SizedBox(height: 12),
-                            _LogoutButton(
-                              onLogout: () {
-                                // Clear session cache and return to welcome flow.
-                                UserSession.email = null;
-                                UserSession.userId = null;
-                                Navigator.of(context).pushAndRemoveUntil(
-                                  MaterialPageRoute(
-                                    builder: (_) => WelcomeScreen(
-                                      onLoginTap: (context) {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => LoginScreen(
-                                              onLogin: () {
-                                                Navigator.of(context)
-                                                    .pushReplacement(
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        const UploadScreen(),
-                                                  ),
-                                                );
-                                              },
-                                              onSignupClick: () {
-                                                Navigator.of(context).push(
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        SignupScreen(
-                                                      onSignup: () {
-                                                        Navigator.of(context)
-                                                            .pushReplacement(
-                                                          MaterialPageRoute(
-                                                            builder: (_) =>
-                                                                const UploadScreen(),
-                                                          ),
-                                                        );
-                                                      },
-                                                      onBackToLogin: () =>
-                                                          Navigator.of(context)
-                                                              .pop(),
-                                                    ),
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      onSignupTap: (context) {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => SignupScreen(
-                                              onSignup: () {
-                                                Navigator.of(context)
-                                                    .pushReplacement(
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        const UploadScreen(),
-                                                  ),
-                                                );
-                                              },
-                                              onBackToLogin: () =>
-                                                  Navigator.of(context).pop(),
-                                            ),
-                                          ),
-                                        );
-                                      },
+                                  },
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF2563EB),
+                                    backgroundColor: isDark
+                                        ? const Color(0xFF1E293B)
+                                        : const Color(0xFFEFF6FF),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 6,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(999),
                                     ),
                                   ),
-                                  (_) => false,
-                                );
-                              },
+                                  child: const Text(
+                                    '관리',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const _AppVersionFooter(),
-                          ],
-                        ),
+                          ),
+                          if (snapshot.hasError)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+                              child: Text(
+                                '프로필을 불러오지 못했습니다: ${snapshot.error}',
+                                style: const TextStyle(
+                                  color: Color(0xFFDC2626),
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 24),
+                          const _SectionHeader(label: '일반'),
+                          _GlassCard(
+                            child: Column(
+                              children: [
+                                _SettingsToggleTile(
+                                  icon: Icons.notifications,
+                                  iconColor: SettingsPalette.primary,
+                                  iconBg: isDark
+                                      ? const Color(0xFF3B2F1E)
+                                      : const Color(0xFFFFEDD5),
+                                  label: '알림',
+                                  value: _notificationsEnabled,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _notificationsEnabled = value;
+                                    });
+                                  },
+                                ),
+                                _SettingsTile(
+                                  icon: Icons.language,
+                                  iconColor: const Color(0xFF2563EB),
+                                  iconBg: isDark
+                                      ? const Color(0xFF1E293B)
+                                      : const Color(0xFFDBEAFE),
+                                  label: '언어',
+                                  trailingLabel: '한국어',
+                                ),
+                                _SettingsTile(
+                                  icon: Icons.dark_mode,
+                                  iconColor: const Color(0xFF64748B),
+                                  iconBg: isDark
+                                      ? const Color(0xFF1F2937)
+                                      : const Color(0xFFF1F5F9),
+                                  label: '화면 모드',
+                                  trailingLabel: '시스템 설정',
+                                  isLast: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const _SectionHeader(label: '검토 설정'),
+                          _GlassCard(
+                            child: Column(
+                              children: [
+                                _SettingsTile(
+                                  icon: Icons.security,
+                                  iconColor: const Color(0xFF10B981),
+                                  iconBg: isDark
+                                      ? const Color(0xFF064E3B)
+                                      : const Color(0xFFD1FAE5),
+                                  label: '위험 감수 수준',
+                                  trailingLabel: '중간 (Medium)',
+                                ),
+                                _SettingsTile(
+                                  icon: Icons.tune,
+                                  iconColor: const Color(0xFF6366F1),
+                                  iconBg: isDark
+                                      ? const Color(0xFF312E81)
+                                      : const Color(0xFFE0E7FF),
+                                  label: '맞춤법 체크',
+                                  isLast: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const _SectionHeader(label: '계정 및 지원'),
+                          _GlassCard(
+                            child: Column(
+                              children: [
+                                _SettingsTile(
+                                  icon: Icons.support_agent,
+                                  iconColor: const Color(0xFF64748B),
+                                  iconBg: isDark
+                                      ? const Color(0xFF1F2937)
+                                      : const Color(0xFFF1F5F9),
+                                  label: '고객센터',
+                                ),
+                                _SettingsTile(
+                                  icon: Icons.policy,
+                                  iconColor: const Color(0xFF64748B),
+                                  iconBg: isDark
+                                      ? const Color(0xFF1F2937)
+                                      : const Color(0xFFF1F5F9),
+                                  label: '개인정보 처리방침',
+                                ),
+                                _SettingsLogoutTile(onLogout: _handleLogout),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          _DisclaimerCard(isDark: isDark),
+                          const SizedBox(height: 20),
+                          const _AppVersionFooter(),
+                        ],
                       ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileAppBar extends StatelessWidget {
-  final VoidCallback onBack;
-
-  const _ProfileAppBar({required this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_ios_new),
-            color: DashboardPalette.textDark,
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shape: const CircleBorder(),
-            ),
-          ),
-          const Expanded(
-            child: Center(
-              child: Text(
-                '프로필',
-                style: TextStyle(
-                  color: DashboardPalette.textDark,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 40),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileHeader extends StatelessWidget {
-  final String name;
-  final String email;
-
-  const _ProfileHeader({required this.name, required this.email});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        children: [
-          Stack(
-            children: [
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: DashboardPalette.primary.withValues(alpha: 0.1),
-                  border: Border.all(
-                    color: DashboardPalette.primary.withValues(alpha: 0.2),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                    ),
+                    _SettingsBottomNav(
+                      onHomeTap: _goHomeFromBottomNav,
+                      onHistoryTap: _goHistoryFromBottomNav,
+                      onCameraTap: _openCaptureOptionsFromBottomNav,
                     ),
                   ],
-                ),
-                child: const Icon(
-                  Icons.person,
-                  size: 48,
-                  color: DashboardPalette.primary,
-                ),
-              ),
-              Positioned(
-                bottom: 6,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: DashboardPalette.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.photo_camera,
-                    size: 14,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            name,
-            style: TextStyle(
-              color: DashboardPalette.textDark,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            email,
-            style: TextStyle(
-              color: DashboardPalette.textMuted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileInfoSection extends StatelessWidget {
-  final String name;
-  final String email;
-
-  const _ProfileInfoSection({required this.name, required this.email});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '사용자 정보',
-            style: TextStyle(
-              color: DashboardPalette.textDark.withValues(alpha: 0.7),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _InfoCard(icon: Icons.badge, label: '이름', value: name),
-          const SizedBox(height: 10),
-          _InfoCard(
-            icon: Icons.mail,
-            label: '이메일 주소',
-            value: email,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _InfoCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF0F2F4)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: DashboardPalette.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: DashboardPalette.primary, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label.toUpperCase(),
-                  style: TextStyle(
-                    color: DashboardPalette.textMuted,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: DashboardPalette.textDark,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileEditButton extends StatelessWidget {
-  final Future<void> Function() onEdit;
-
-  const _ProfileEditButton({required this.onEdit});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: SizedBox(
-        width: double.infinity,
-        height: 48,
-        child: ElevatedButton.icon(
-          onPressed: () {
-            onEdit();
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: DashboardPalette.primary,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            elevation: 6,
-            shadowColor: DashboardPalette.primary.withValues(alpha: 0.2),
-          ),
-          icon: const Icon(Icons.edit, size: 18),
-          label: const Text(
-            '프로필 수정하기',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Column(
-        children: const [
-          Divider(color: Color(0xFFF0F2F4), height: 1),
-          SizedBox(height: 8),
-          _SettingRow(icon: Icons.shield, title: '보안 및 개인정보'),
-          _SettingRow(icon: Icons.notifications, title: '알림 설정'),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-
-  const _SettingRow({required this.icon, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {},
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-        child: Row(
-          children: [
-            Icon(icon, color: DashboardPalette.textMuted, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: DashboardPalette.textDark,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: Color(0xFFD1D5DB)),
           ],
         ),
       ),
     );
   }
-}
 
-class _LogoutButton extends StatelessWidget {
-  final VoidCallback onLogout;
+  void _openCaptureOptionsFromBottomNav() {
+    _showCaptureOptions(context);
+  }
 
-  const _LogoutButton({required this.onLogout});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: SizedBox(
-        width: double.infinity,
-        child: TextButton.icon(
-          onPressed: onLogout,
-          style: TextButton.styleFrom(
-            backgroundColor: const Color(0xFFFEE2E2),
-            foregroundColor: const Color(0xFFDC2626),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+  void _showCaptureOptions(BuildContext context) {
+    final parentContext = context;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xEE0F172A) : const Color(0xFFF8FAFC),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(28),
+              topRight: Radius.circular(28),
             ),
+            border: Border.all(
+              color: isDark ? const Color(0xFF1F2937) : const Color(0xFFE2E8F0),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 20,
+                offset: Offset(0, -4),
+              ),
+            ],
           ),
-          icon: const Icon(Icons.logout, size: 18),
-          label: const Text(
-            '로그아웃',
-            style: TextStyle(fontWeight: FontWeight.w800),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _CaptureOptionTile(
+                icon: Icons.photo_camera_rounded,
+                label: '사진촬영',
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  await _pickFromCamera(parentContext);
+                },
+              ),
+              _CaptureOptionTile(
+                icon: Icons.insert_drive_file_rounded,
+                label: '파일 업로드',
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  await _pickFromFile(parentContext);
+                },
+              ),
+              _CaptureOptionTile(
+                icon: Icons.image_rounded,
+                label: '이미지 업로드',
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  await _pickFromGallery(parentContext);
+                },
+              ),
+            ],
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickFromCamera(BuildContext context) async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.camera);
+      if (!context.mounted || image == null) {
+        return;
+      }
+      await _analyzeFile(context, image.path, displayName: image.name);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('카메라 열기 실패: $error')));
+    }
+  }
+
+  Future<void> _pickFromGallery(BuildContext context) async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+      if (!context.mounted || image == null) {
+        return;
+      }
+      await _analyzeFile(context, image.path, displayName: image.name);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('갤러리 열기 실패: $error')));
+    }
+  }
+
+  Future<void> _pickFromFile(BuildContext context) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+      );
+      if (!context.mounted || result == null || result.files.isEmpty) {
+        return;
+      }
+      final file = result.files.first;
+      final path = file.path;
+      if (path == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('파일 경로를 확인할 수 없습니다.')));
+        return;
+      }
+      await _analyzeFile(context, path, displayName: file.name);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('파일 선택 실패: $error')));
+    }
+  }
+
+  Future<void> _analyzeFile(
+    BuildContext context,
+    String path, {
+    required String displayName,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final userId = UserSession.userId;
+    final email = UserSession.email;
+
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const LoadingScreen()));
+
+    try {
+      final uri = Uri.parse('http://3.38.43.65:8000/analyze/file');
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            path,
+            filename: displayName,
+          ),
+        );
+
+      if (userId != null) {
+        request.fields['user_id'] = userId.toString();
+      }
+      if (email != null && email.isNotEmpty) {
+        request.fields['email'] = email;
+      }
+      request.fields['original_name'] = displayName;
+
+      final response = await request.send();
+      final body = await response.stream.bytesToString();
+      if (response.statusCode != 200) {
+        throw Exception('API 오류: ${response.statusCode} $body');
+      }
+
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final summary = (data['summary'] ?? data['llm_summary'])
+          ?.toString()
+          .trim();
+
+      if (!context.mounted) {
+        return;
+      }
+      Navigator.of(context, rootNavigator: true).pop();
+
+      final viewModel = ResultViewModel.fromApi(
+        data,
+        filename: displayName,
+        fallbackSummary: summary,
+      );
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ResultScreen(viewModel: viewModel)),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(SnackBar(content: Text('분석 실패: $error')));
+    }
+  }
+
+  void _goHistoryFromBottomNav() {
+    if (UserSession.userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('회원 상태에서만 이동할 수 있습니다.')));
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HistoryScreen()));
+  }
+
+  void _goHomeFromBottomNav() {
+    if (UserSession.userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('회원 상태에서만 이동할 수 있습니다.')));
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WelcomeScreen(
+          onLoginTap: (context) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => LoginScreen(
+                  onLogin: () {
+                    Navigator.of(context).pop();
+                  },
+                  onSignupClick: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SignupScreen(
+                          onSignup: () {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (_) => const UploadScreen(),
+                              ),
+                            );
+                          },
+                          onBack: () => Navigator.of(context).pop(),
+                          onLoginTap: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+          onSignupTap: (context) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SignupScreen(
+                  onSignup: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const UploadScreen()),
+                    );
+                  },
+                  onBack: () => Navigator.of(context).pop(),
+                  onLoginTap: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => LoginScreen(
+                          onLogin: () {
+                            Navigator.of(context).pop();
+                          },
+                          onSignupClick: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => SignupScreen(
+                                  onSignup: () {
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(
+                                        builder: (_) => const UploadScreen(),
+                                      ),
+                                    );
+                                  },
+                                  onBack: () => Navigator.of(context).pop(),
+                                  onLoginTap: () => Navigator.of(context).pop(),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
         ),
       ),
+    );
+  }
+
+  void _handleLogout() {
+    UserSession.email = null;
+    UserSession.userId = null;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => WelcomeScreen(
+          onLoginTap: (context) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => LoginScreen(
+                  onLogin: () {
+                    Navigator.of(context).pop();
+                  },
+                  onSignupClick: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SignupScreen(
+                          onSignup: () {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (_) => const UploadScreen(),
+                              ),
+                            );
+                          },
+                          onBack: () => Navigator.of(context).pop(),
+                          onLoginTap: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+          onSignupTap: (context) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SignupScreen(
+                  onSignup: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const UploadScreen()),
+                    );
+                  },
+                  onBack: () => Navigator.of(context).pop(),
+                  onLoginTap: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => LoginScreen(
+                          onLogin: () {
+                            Navigator.of(context).pop();
+                          },
+                          onSignupClick: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => SignupScreen(
+                                  onSignup: () {
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(
+                                        builder: (_) => const UploadScreen(),
+                                      ),
+                                    );
+                                  },
+                                  onBack: () => Navigator.of(context).pop(),
+                                  onLoginTap: () => Navigator.of(context).pop(),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      (_) => false,
     );
   }
 }
@@ -619,28 +1293,62 @@ class _AppVersionFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
       child: Column(
         children: [
           Text(
-            '계약서 AI v1.0.4',
+            'Version 1.2.0 (Build 340)',
             style: TextStyle(
-              color: DashboardPalette.textMuted.withValues(alpha: 0.6),
+              color: SettingsPalette.textMuted.withValues(alpha: 0.7),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '안전한 법률 분석 환경',
-            style: TextStyle(
-              color: DashboardPalette.textMuted.withValues(alpha: 0.6),
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _CaptureOptionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _CaptureOptionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final iconColor = isDark
+        ? const Color(0xFFF8FAFC)
+        : SettingsPalette.primary;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1F2937) : const Color(0xFFFFE6CC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: iconColor, size: 22),
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
+      ),
+      trailing: Icon(Icons.chevron_right_rounded, color: textColor),
+      onTap: onTap,
     );
   }
 }

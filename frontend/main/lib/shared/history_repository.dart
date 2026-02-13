@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 class ActivityEntry {
   final String title;
   final String time;
+  final DateTime? createdAt;
   final String statusLabel;
   final Color statusColor;
   final Color badgeColor;
@@ -18,6 +19,7 @@ class ActivityEntry {
   const ActivityEntry({
     required this.title,
     required this.time,
+    this.createdAt,
     required this.statusLabel,
     required this.statusColor,
     required this.badgeColor,
@@ -29,7 +31,7 @@ class ActivityEntry {
   });
 }
 
-/// 기록/활동 내역을 앱 전역에서 공유하는 저장소.
+/// 기록/활동 내역 데이터를 앱 전역에서 공유하는 저장소.
 class HistoryRepository {
   HistoryRepository._();
 
@@ -42,18 +44,60 @@ class HistoryRepository {
     entries.value = [entry, ...entries.value];
   }
 
-  Future<void> loadForUser(int userId) async {
-    final uri = Uri.parse('http://3.38.43.65:8000/history?user_id=$userId');
-    final response = await http.get(uri);
-    final body = utf8.decode(response.bodyBytes);
-    if (response.statusCode != 200) {
-      throw Exception('???? ?? ??: ${response.statusCode} ${body.trim()}');
+  Future<void> loadForSession({int? userId, String? email}) async {
+    final trimmedEmail = email?.trim() ?? '';
+    final hasEmail = trimmedEmail.isNotEmpty;
+    if (userId == null && !hasEmail) {
+      entries.value = const [];
+      return;
     }
 
-    final decoded = jsonDecode(body);
-    final rawList = _extractHistoryList(decoded);
-    final mapped = rawList.map(_mapHistoryEntry).toList(growable: false);
-    entries.value = mapped;
+    final uris = <Uri>[];
+    if (userId != null) {
+      uris.add(Uri.parse('http://3.38.43.65:8000/history?user_id=$userId'));
+      uris.add(Uri.parse('http://3.38.43.65:8000/history?userId=$userId'));
+    }
+    if (hasEmail) {
+      final encoded = Uri.encodeQueryComponent(trimmedEmail);
+      uris.add(Uri.parse('http://3.38.43.65:8000/history?email=$encoded'));
+      uris.add(Uri.parse('http://3.38.43.65:8000/history?user_email=$encoded'));
+    }
+
+    Exception? lastError;
+    for (final uri in uris) {
+      try {
+        final response = await http.get(uri);
+        final body = utf8.decode(response.bodyBytes);
+        if (response.statusCode != 200) {
+          lastError = Exception(
+            'History API error: ${response.statusCode} ${body.trim()}',
+          );
+          continue;
+        }
+
+        final decoded = jsonDecode(body);
+        if (_looksLikeErrorPayload(decoded)) {
+          lastError = Exception('History API payload indicates an error.');
+          continue;
+        }
+
+        final rawList = _extractHistoryList(decoded);
+        final mapped = rawList.map(_mapHistoryEntry).toList(growable: false);
+        entries.value = mapped;
+        return;
+      } catch (error) {
+        lastError = Exception(error.toString());
+      }
+    }
+
+    if (lastError != null) {
+      throw lastError;
+    }
+    entries.value = const [];
+  }
+
+  Future<void> loadForUser(int userId) async {
+    return loadForSession(userId: userId);
   }
 
   Future<Map<String, dynamic>> fetchAnalysisDetail(int analysisId) async {
@@ -75,21 +119,49 @@ class HistoryRepository {
       return decoded;
     }
     if (decoded is Map<String, dynamic>) {
-      for (final key in ['data', 'history', 'results', 'items', 'analyses']) {
+      for (final key in [
+        'data',
+        'history',
+        'results',
+        'items',
+        'analyses',
+        'records',
+        'rows',
+      ]) {
         final value = decoded[key];
         if (value is List) {
           return value;
+        }
+        if (value is Map<String, dynamic>) {
+          final nested = _extractHistoryList(value);
+          if (nested.isNotEmpty) {
+            return nested;
+          }
         }
       }
     }
     return const [];
   }
 
+  bool _looksLikeErrorPayload(dynamic decoded) {
+    if (decoded is! Map<String, dynamic>) {
+      return false;
+    }
+    for (final key in ['detail', 'error']) {
+      final value = decoded[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   ActivityEntry _mapHistoryEntry(dynamic raw) {
     if (raw is! Map<String, dynamic>) {
       return const ActivityEntry(
-        title: '?? ??',
+        title: 'Unknown file',
         time: '',
+        createdAt: null,
         statusLabel: 'Safe',
         statusColor: Color(0xFF15803D),
         badgeColor: Color(0xFFDCFCE7),
@@ -107,9 +179,12 @@ class HistoryRepository {
           'file_name',
           'original_filename',
           'original_name',
+          'contract_name',
+          'title',
+          'document_name',
           'file',
         ]) ??
-        '?? ??';
+        'Unknown file';
     final riskyCount = _pickInt(raw, [
           'risky_count',
           'risk_count',
@@ -126,6 +201,7 @@ class HistoryRepository {
       'timestamp',
       'created_time',
     ]);
+    final createdAtDateTime = _tryParseDate(createdAt);
     final timestamp = _formatHistoryTime(createdAt);
 
     final statusLabel = riskyCount > 0
@@ -144,6 +220,7 @@ class HistoryRepository {
     return ActivityEntry(
       title: filename,
       time: timestamp,
+      createdAt: createdAtDateTime,
       statusLabel: statusLabel,
       statusColor: statusColor,
       badgeColor: badgeColor,
@@ -195,6 +272,13 @@ class HistoryRepository {
     final hour = parsed.hour.toString().padLeft(2, '0');
     final minute = parsed.minute.toString().padLeft(2, '0');
     return '$year-$month-$day $hour:$minute';
+  }
+
+  DateTime? _tryParseDate(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(value);
   }
 
   IconData _pickIconForFile(String filename) {

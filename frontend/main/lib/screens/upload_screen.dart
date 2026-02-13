@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
+import '../loading.dart';
 import '../result.dart';
+import '../shared/color_compat.dart';
 import '../shared/dashboard_palette.dart';
 import '../shared/history_repository.dart';
 import '../user_session.dart';
@@ -157,11 +159,8 @@ class _UploadScreenState extends State<UploadScreen> {
     }
 
 
-    // 분석 진행 중에는 로딩 다이얼로그를 띄운다.
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LoadingScreen()),
     );
 
     try {

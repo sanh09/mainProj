@@ -1,29 +1,93 @@
-﻿import 'dart:convert';
+﻿import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'detail.dart';
-import 'screens/upload_screen.dart';
+import 'login_screen.dart';
+import 'screens/history_screen.dart';
+import 'screens/profile_screen.dart';
+import 'shared/color_compat.dart';
+import 'user_session.dart';
+import 'welcome_screen.dart';
 
 final Map<String, Map<String, dynamic>> _detailCache = {};
+final Map<String, Future<Map<String, dynamic>>> _detailInFlight = {};
+
+class AnalysisFlowTrace {
+  static Stopwatch? _stopwatch;
+  static String? _source;
+  static String? _filename;
+  static int _runId = 0;
+
+  static bool get _isActive => _stopwatch != null;
+
+  static void start({
+    required String source,
+    required String filename,
+  }) {
+    _runId += 1;
+    _source = source;
+    _filename = filename;
+    _stopwatch = Stopwatch()..start();
+    _print('start');
+  }
+
+  static void mark(String step, {Map<String, Object?>? data}) {
+    if (!_isActive) {
+      return;
+    }
+    _print(step, data: data);
+  }
+
+  static void end(String step, {Map<String, Object?>? data}) {
+    if (!_isActive) {
+      return;
+    }
+    _print(step, data: data);
+    _stopwatch?.stop();
+    _stopwatch = null;
+    _source = null;
+    _filename = null;
+  }
+
+  static void _print(String step, {Map<String, Object?>? data}) {
+    final elapsedMs = _stopwatch?.elapsedMilliseconds ?? 0;
+    final extras = <String>[];
+    final source = _source;
+    final filename = _filename;
+    if (source != null) {
+      extras.add('source=$source');
+    }
+    if (filename != null) {
+      extras.add('file=$filename');
+    }
+    data?.forEach((key, value) {
+      extras.add('$key=${value ?? 'null'}');
+    });
+    final suffix = extras.isEmpty ? '' : ' ${extras.join(' ')}';
+    debugPrint('[flow][$_runId] t=${elapsedMs}ms step=$step$suffix');
+  }
+}
 
 // 결과 화면에서 사용하는 색상 팔레트.
 class ResultPalette {
-  static const Color primary = Color(0xFF2563EB);
-  static const Color accentBlue = Color(0xFF3B82F6);
-  static const Color navyPanel = Color(0xFF0F172A);
-  static const Color backgroundLight = Color(0xFFF8FAFC);
-  static const Color backgroundDark = Color(0xFF0B1220);
-  static const Color cardDark = Color(0xFF111827);
-  static const Color cardBorder = Color(0xFFE2E8F0);
-  static const Color textHeader = Color(0xFF1E293B);
-  static const Color textBody = Color(0xFF475569);
-  static const Color textMuted = Color(0xFF64748B);
-  static const Color riskRed = Color(0xFFEF4444);
-  static const Color riskYellow = Color(0xFFF59E0B);
-  static const Color riskBlue = Color(0xFF3B82F6);
+  static const Color primary = Color(0xFFFA9819);
+  static const Color accentBlue = Color(0xFFE85D04);
+  static const Color navyPanel = Color(0xFFFFF4D6);
+  static const Color backgroundLight = Color(0xFFFFFDF8);
+  static const Color backgroundDark = Color(0xFF1A1612);
+  static const Color cardLight = Color(0xFFFFFFFF);
+  static const Color cardDark = Color(0xFF2D2823);
+  static const Color cardBorder = Color(0xFFFFE2BF);
+  static const Color textHeader = Color(0xFF1F2937);
+  static const Color textBody = Color(0xFF64748B);
+  static const Color textMuted = Color(0xFF94A3B8);
+  static const Color riskRed = Color(0xFFE85D04);
+  static const Color riskYellow = Color(0xFFFFB347);
+  static const Color riskBlue = Color(0xFFFA9819);
 }
 
 // 조항 위험도를 표현하는 등급.
@@ -185,7 +249,14 @@ class ResultViewModel extends ChangeNotifier {
           fallbackSummary?.trim(),
     );
     final summarySpans = _buildSummarySpans(summaryText);
-    final rawText = _rawStringFrom(data, ['raw_text', 'rawText', 'ocr_text']);
+    final rawTextSource = _rawStringFrom(data, [
+      'raw_text',
+      'rawText',
+      'ocr_text',
+    ]);
+    final rawText = rawTextSource == null
+        ? null
+        : _dedupeRepeatedRawText(rawTextSource);
     final rawHighlights = rawText == null
         ? const <String>[]
         : _collectHighlights(rawText, null, riskySnippets);
@@ -280,6 +351,7 @@ class ResultViewModel extends ChangeNotifier {
     }
 
     final clauses = <ContractClause>[];
+    final seen = <String>{};
     for (final item in rawClauses) {
       if (item is! Map<String, dynamic>) {
         continue;
@@ -301,6 +373,11 @@ class ResultViewModel extends ChangeNotifier {
           _cleanText(_stringFrom(item, ['highlight', 'risk_text']));
       final risk = _riskFromString(_stringFrom(item, ['risk', 'level']));
       final highlights = _collectHighlights(body, highlight, riskySnippets);
+      final dedupeKey =
+          '${_normalizeRawText(title).toLowerCase()}|${_normalizeRawText(body).toLowerCase()}';
+      if (!seen.add(dedupeKey)) {
+        continue;
+      }
       clauses.add(
         ContractClause(
           id: clauseId,
@@ -366,7 +443,7 @@ class ResultViewModel extends ChangeNotifier {
     return null;
   }
 
-  // ?? ??? ?? ?? ???? ????.
+  // 앞뒤 공백을 유지한 원문 문자열이 필요할 때 사용한다.
   static String? _rawStringFrom(Map<String, dynamic> map, List<String> keys) {
     for (final key in keys) {
       final value = map[key];
@@ -432,6 +509,39 @@ class ResultViewModel extends ChangeNotifier {
         // Trim including any remaining leading/trailing spaces.
         .trim();
     return cleaned.isEmpty ? originalTrimmed : cleaned;
+  }
+
+  // OCR 원문이 그대로 두 번 붙어 오는 경우 첫 번째 블록만 남긴다.
+  static String _dedupeRepeatedRawText(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length < 120) {
+      return trimmed;
+    }
+
+    final midpoint = trimmed.length ~/ 2;
+    final start = (midpoint - 240).clamp(1, trimmed.length - 1);
+    final end = (midpoint + 240).clamp(1, trimmed.length - 1);
+
+    for (var split = start; split <= end; split++) {
+      final left = trimmed.substring(0, split).trim();
+      final right = trimmed.substring(split).trim();
+      if (left.isEmpty || right.isEmpty) {
+        continue;
+      }
+      if (_normalizeRawText(left) == _normalizeRawText(right)) {
+        debugPrint(
+          '[result] raw_text deduplicated '
+          'original=${trimmed.length} deduped=${left.length}',
+        );
+        return left;
+      }
+    }
+
+    return trimmed;
+  }
+
+  static String _normalizeRawText(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   // 위험도 문자열을 enum으로 매핑한다.
@@ -590,7 +700,34 @@ class ResultScreen extends StatefulWidget {
 // 결과 화면의 상태 및 렌더링 로직.
 class _ResultScreenState extends State<ResultScreen> {
   ContractClause? _lastTappedClause;
-  final Map<String, Map<String, dynamic>> _detailCache = {};
+  bool _isSummaryDialogOpen = false;
+  String? _summaryLoadingKey;
+  String? _lastTapKey;
+  DateTime? _lastTapAt;
+  bool _isDetailOpening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AnalysisFlowTrace.mark(
+      'result_screen_init',
+      data: {
+        'analysisId': widget.viewModel.analysisId ?? 'null',
+        'clauses': widget.viewModel.data.clauses.length,
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AnalysisFlowTrace.end(
+        'result_first_frame',
+        data: {
+          'analysisId': widget.viewModel.analysisId ?? 'null',
+          'clauses': widget.viewModel.data.clauses.length,
+          'highlights': widget.viewModel.data.rawHighlights.length,
+        },
+      );
+    });
+  }
+
   @override
   void dispose() {
     widget.viewModel.dispose();
@@ -602,13 +739,14 @@ class _ResultScreenState extends State<ResultScreen> {
     return AnimatedBuilder(
       animation: widget.viewModel,
       builder: (context, _) {
+        final shouldShowRawText = _shouldShowRawTextCard(widget.viewModel.data);
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final background = isDark
             ? ResultPalette.backgroundDark
             : ResultPalette.backgroundLight;
-        final hasSummary = widget.viewModel.data.summarySpans.isNotEmpty;
         return Scaffold(
           backgroundColor: background,
+          bottomNavigationBar: const ResultBottomNav(),
           body: SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -624,7 +762,20 @@ class _ResultScreenState extends State<ResultScreen> {
                             onBack: () {
                               Navigator.of(context).pushAndRemoveUntil(
                                 MaterialPageRoute(
-                                  builder: (_) => const UploadScreen(),
+                                  builder: (_) => WelcomeScreen(
+                                    onLoginTap: (context) {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => LoginScreen(
+                                            onLogin: () =>
+                                                Navigator.of(context).pop(),
+                                            onSignupClick: () {},
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    onSignupTap: (_) {},
+                                  ),
                                 ),
                                 (route) => false,
                               );
@@ -633,7 +784,7 @@ class _ResultScreenState extends State<ResultScreen> {
                           ),
                           Expanded(
                             child: SingleChildScrollView(
-                              padding: const EdgeInsets.only(bottom: 240),
+                              padding: const EdgeInsets.only(bottom: 80),
                               child: Column(
                                 children: [
                                   ResultStatsRow(
@@ -643,8 +794,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                     riskyCount:
                                         widget.viewModel.data.riskyClauseCount,
                                   ),
-                                  if (widget.viewModel.data.rawText != null &&
-                                      widget.viewModel.data.rawText!.isNotEmpty)
+                                  if (shouldShowRawText)
                                     _OcrRawTextCard(
                                       isDark: isDark,
                                       text: widget.viewModel.data.rawText!,
@@ -655,13 +805,6 @@ class _ResultScreenState extends State<ResultScreen> {
                                             context,
                                             highlight,
                                           ),
-                                    )
-                                  else
-                                    ResultClauseList(
-                                      isDark: isDark,
-                                      clauses: widget.viewModel.data.clauses,
-                                      onHighlightTap: (clause) =>
-                                          _handleHighlightTap(context, clause),
                                     ),
                                   const SizedBox(height: 80),
                                 ],
@@ -669,24 +812,6 @@ class _ResultScreenState extends State<ResultScreen> {
                             ),
                           ),
                         ],
-                      ),
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 24,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          child:
-                              widget.viewModel.showSummary && hasSummary
-                              ? ResultSummaryCard(
-                                  isDark: isDark,
-                                  spans: widget.viewModel.data.summarySpans,
-                                  onClose: widget.viewModel.closeSummary,
-                                  onAction: () =>
-                                      _openSelectedClauseDetail(context),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
                       ),
                     ],
                   ),
@@ -699,17 +824,106 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
+  bool _shouldShowRawTextCard(ResultData data) {
+    final rawText = data.rawText;
+    if (rawText == null || rawText.trim().isEmpty) {
+      return false;
+    }
+
+    final normalizedRaw = ResultViewModel._normalizeRawText(
+      rawText,
+    ).toLowerCase();
+    if (normalizedRaw.length < 40) {
+      return true;
+    }
+
+    for (final clause in data.clauses) {
+      final normalizedBody = ResultViewModel._normalizeRawText(
+        clause.body,
+      ).toLowerCase();
+      if (normalizedBody.isEmpty) {
+        continue;
+      }
+
+      final isSameText = normalizedBody == normalizedRaw;
+      final bodyMostlyRaw =
+          normalizedBody.length >= (normalizedRaw.length * 0.85) &&
+          normalizedRaw.contains(normalizedBody);
+      final rawMostlyBody =
+          normalizedRaw.length >= (normalizedBody.length * 0.85) &&
+          normalizedBody.contains(normalizedRaw);
+
+      if (isSameText || bodyMostlyRaw || rawMostlyBody) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
 
   void _handleHighlightTap(BuildContext context, ContractClause clause) {
     final analysisId = widget.viewModel.analysisId;
+    if (analysisId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('상세 데이터를 찾을 수 없습니다.')),
+      );
+      return;
+    }
+    final key = _detailCacheKey(analysisId, clause);
+    final now = DateTime.now();
+    if (_lastTapKey == key &&
+        _lastTapAt != null &&
+        now.difference(_lastTapAt!).inMilliseconds < 700) {
+      debugPrint('[result] highlight tap ignored (debounce) key=$key');
+      return;
+    }
+    _lastTapKey = key;
+    _lastTapAt = now;
     _lastTappedClause = clause;
     debugPrint(
-      '[result] highlight tap analysisId=${analysisId ?? 'null'} '
+      '[result] highlight tap analysisId=$analysisId '
       'clauseId=${clause.id?.toString() ?? 'null'} '
       'lookup=${clause.lookupKey ?? 'null'} '
       'title=${clause.title}',
     );
     _loadClauseSummary(context, analysisId, clause);
+  }
+
+  Future<void> _showSummaryDialog(BuildContext context) async {
+    if (_isSummaryDialogOpen || !context.mounted) {
+      return;
+    }
+    _isSummaryDialogOpen = true;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: AnimatedBuilder(
+            animation: widget.viewModel,
+            builder: (context, _) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              return ResultSummaryCard(
+                isDark: isDark,
+                spans: widget.viewModel.data.summarySpans,
+                onClose: () {
+                  widget.viewModel.closeSummary();
+                  Navigator.of(dialogContext).pop();
+                },
+                onAction: () {
+                  Navigator.of(dialogContext).pop();
+                  _openSelectedClauseDetail(context);
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+    _isSummaryDialogOpen = false;
   }
 
   void _handleOcrHighlightTap(BuildContext context, String highlight) {
@@ -764,6 +978,9 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   void _openSelectedClauseDetail(BuildContext context) {
+    if (_isDetailOpening) {
+      return;
+    }
     final analysisId = widget.viewModel.analysisId;
     final clauses = widget.viewModel.data.clauses;
     if (analysisId == null || clauses.isEmpty) {
@@ -780,7 +997,10 @@ class _ResultScreenState extends State<ResultScreen> {
     debugPrint(
       '[result] detail open clause="${clause.title}" id=${clause.id?.toString() ?? 'null'}',
     );
-    _openDetail(context, analysisId, clause);
+    _isDetailOpening = true;
+    _openDetail(context, analysisId, clause).whenComplete(() {
+      _isDetailOpening = false;
+    });
   }
 
   Future<void> _loadClauseSummary(
@@ -792,18 +1012,22 @@ class _ResultScreenState extends State<ResultScreen> {
       const [ResultSummarySpan('요약을 불러오는 중입니다.')],
     );
     widget.viewModel.openSummary();
+    _showSummaryDialog(context);
     if (analysisId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('상세 데이터를 찾을 수 없습니다.')),
       );
       return;
     }
+    final cacheKey = _detailCacheKey(analysisId, clause);
+    if (_summaryLoadingKey == cacheKey) {
+      debugPrint('[result] summary load skipped (already loading) key=$cacheKey');
+      return;
+    }
+    _summaryLoadingKey = cacheKey;
 
     try {
-      final cacheKey = _detailCacheKey(analysisId, clause);
-      final decoded = _detailCache[cacheKey] ??
-          await _fetchClauseDetail(analysisId, clause);
-      _detailCache[cacheKey] = decoded;
+      final decoded = await _getClauseDetailWithCache(analysisId, clause);
       if (!context.mounted) {
         return;
       }
@@ -813,12 +1037,17 @@ class _ResultScreenState extends State<ResultScreen> {
       if (!context.mounted) {
         return;
       }
+      final message = _friendlyDetailErrorMessage(error);
       widget.viewModel.updateSummarySpans(
         const [ResultSummarySpan('해당 조항 요약을 불러올 수 없습니다.')],
       );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('상세 로드 실패: $error')),
+        SnackBar(content: Text(message)),
       );
+    } finally {
+      if (_summaryLoadingKey == cacheKey) {
+        _summaryLoadingKey = null;
+      }
     }
   }
 }
@@ -901,37 +1130,203 @@ class ResultStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final highlightCount = foundCount > 0 ? foundCount : riskyCount;
     return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatCard(
-              title: '발견된 조항',
-              value: '$foundCount건',
-              titleColor:
-                  isDark ? Colors.white70 : ResultPalette.textMuted,
-              valueColor: isDark ? Colors.white : ResultPalette.textHeader,
-              background: isDark ? ResultPalette.cardDark : Colors.white,
-              borderColor:
-                  isDark ? Colors.white12 : ResultPalette.cardBorder,
-            ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: ResultPalette.navyPanel.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: ResultPalette.primary.withValues(alpha: 0.2),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatCard(
-              title: '독소 가능성',
-              value: '$riskyCount건',
-              titleColor:
-                  isDark ? Colors.white70 : ResultPalette.textMuted,
-              valueColor:
-                  isDark ? ResultPalette.riskRed : ResultPalette.riskRed,
-              background: isDark ? ResultPalette.cardDark : Colors.white,
-              borderColor:
-                  isDark ? Colors.white12 : ResultPalette.cardBorder,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: ResultPalette.primary.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline,
+                color: ResultPalette.accentBlue,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '$highlightCount개의 확인 필요 조항이 발견되었습니다',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: ResultPalette.accentBlue,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ResultBottomNav extends StatelessWidget {
+  const ResultBottomNav({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLoggedIn = UserSession.userId != null;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 22),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xCC1A1612)
+            : ResultPalette.cardLight.withValues(alpha: 0.9),
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? const Color(0xFF1F2937)
+                : ResultPalette.primary.withValues(alpha: 0.2),
+          ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: ResultPalette.primary.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _ResultNavItem(
+                icon: Icons.home_rounded,
+                label: '홈',
+                onTap: () {
+                  if (!isLoggedIn) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('로그인 후 이용가능')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (_) => WelcomeScreen(
+                        onLoginTap: (context) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => LoginScreen(
+                                onLogin: () => Navigator.of(context).pop(),
+                                onSignupClick: () {},
+                              ),
+                            ),
+                          );
+                        },
+                        onSignupTap: (_) {},
+                      ),
+                    ),
+                    (_) => false,
+                  );
+                },
+              ),
+              _ResultNavItem(
+                icon: Icons.history_rounded,
+                label: '히스토리',
+                onTap: () {
+                  if (!isLoggedIn) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('로그인 후 이용가능')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                  );
+                },
+              ),
+              const _ResultNavItem(
+                icon: Icons.smart_toy_rounded,
+                label: 'AI 상담',
+              ),
+              _ResultNavItem(
+                icon: Icons.person_rounded,
+                label: '마이페이지',
+                onTap: () {
+                  if (!isLoggedIn) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('로그인 후 이용가능')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: 120,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(999),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ResultNavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _ResultNavItem({
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF94A3B8)
+        : ResultPalette.textMuted;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 24, color: color),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -956,6 +1351,7 @@ class _OcrRawTextCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           RichText(
@@ -983,8 +1379,7 @@ class _OcrRawTextCard extends StatelessWidget {
     List<String> highlights,
     Color color, {
     ValueChanged<String>? onTap,
-  }
-  ) {
+  }) {
     if (highlights.isEmpty) {
       return [TextSpan(text: body)];
     }
@@ -1040,70 +1435,27 @@ class _OcrRawTextCard extends StatelessWidget {
   }
 }
 
-// 통계 카드 단일 항목 UI.
-class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final Color titleColor;
-  final Color valueColor;
-  final Color background;
-  final Color borderColor;
-
-  const _StatCard({
-    required this.title,
-    required this.value,
-    required this.titleColor,
-    required this.valueColor,
-    required this.background,
-    required this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: titleColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // 조항 리스트 섹션.
 class ResultClauseList extends StatelessWidget {
   final bool isDark;
   final List<ContractClause> clauses;
   final ValueChanged<ContractClause> onHighlightTap;
+  final ContractClause? selectedClause;
+  final bool showSummary;
+  final List<ResultSummarySpan> summarySpans;
+  final VoidCallback onCloseSummary;
+  final VoidCallback onSummaryAction;
 
   const ResultClauseList({
     super.key,
     required this.isDark,
     required this.clauses,
     required this.onHighlightTap,
+    required this.selectedClause,
+    required this.showSummary,
+    required this.summarySpans,
+    required this.onCloseSummary,
+    required this.onSummaryAction,
   });
 
   @override
@@ -1117,6 +1469,11 @@ class ResultClauseList extends StatelessWidget {
               isDark: isDark,
               clause: clause,
               onHighlightTap: onHighlightTap,
+              isSelected: selectedClause == clause,
+              showSummary: showSummary,
+              summarySpans: summarySpans,
+              onCloseSummary: onCloseSummary,
+              onSummaryAction: onSummaryAction,
             ),
         ],
       ),
@@ -1129,11 +1486,21 @@ class _ClauseSection extends StatefulWidget {
   final bool isDark;
   final ContractClause clause;
   final ValueChanged<ContractClause> onHighlightTap;
+  final bool isSelected;
+  final bool showSummary;
+  final List<ResultSummarySpan> summarySpans;
+  final VoidCallback onCloseSummary;
+  final VoidCallback onSummaryAction;
 
   const _ClauseSection({
     required this.isDark,
     required this.clause,
     required this.onHighlightTap,
+    required this.isSelected,
+    required this.showSummary,
+    required this.summarySpans,
+    required this.onCloseSummary,
+    required this.onSummaryAction,
   });
 
   @override
@@ -1169,6 +1536,7 @@ class _ClauseSectionState extends State<_ClauseSection> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1202,6 +1570,18 @@ class _ClauseSectionState extends State<_ClauseSection> {
               ),
             ),
           ),
+          if (widget.isSelected &&
+              widget.showSummary &&
+              widget.summarySpans.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: ResultSummaryCard(
+                isDark: widget.isDark,
+                spans: widget.summarySpans,
+                onClose: widget.onCloseSummary,
+                onAction: widget.onSummaryAction,
+              ),
+            ),
         ],
       ),
     );
@@ -1294,13 +1674,14 @@ class ResultSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = isDark ? Colors.white : ResultPalette.textHeader;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: isDark ? ResultPalette.cardDark : ResultPalette.navyPanel,
+        color: isDark ? ResultPalette.cardDark : ResultPalette.cardLight,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark ? Colors.white12 : Colors.white10,
+          color: isDark ? Colors.white12 : ResultPalette.cardBorder,
         ),
         boxShadow: [
           BoxShadow(
@@ -1311,6 +1692,7 @@ class ResultSummaryCard extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1333,14 +1715,14 @@ class ResultSummaryCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: textColor,
                 ),
               ),
               const Spacer(),
               IconButton(
                 onPressed: onClose,
                 icon: const Icon(Icons.close),
-                color: Colors.white54,
+                color: isDark ? Colors.white54 : ResultPalette.textMuted,
               ),
             ],
           ),
@@ -1350,7 +1732,7 @@ class ResultSummaryCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 15,
                 height: 1.6,
-                color: isDark ? Colors.grey.shade300 : Colors.white70,
+                color: isDark ? Colors.grey.shade300 : ResultPalette.textBody,
               ),
               children: [
                 for (final span in spans)
@@ -1360,7 +1742,8 @@ class ResultSummaryCard extends StatelessWidget {
                       fontWeight: span.isBold
                           ? FontWeight.w700
                           : FontWeight.w500,
-                      color: span.textColor ?? Colors.white,
+                      color: span.textColor ??
+                          (isDark ? Colors.white : ResultPalette.textHeader),
                       decoration: span.underlineColor != null
                           ? TextDecoration.underline
                           : TextDecoration.none,
@@ -1413,7 +1796,7 @@ Future<void> _openDetail(
       'clauseId=${clause.id?.toString() ?? 'null'}',
     );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('?? ???? ?? ? ????.')),
+      const SnackBar(content: Text('상세 정보를 열 수 없습니다.')),
     );
     return;
   }
@@ -1428,10 +1811,7 @@ Future<void> _openDetail(
   dialogShown = true;
 
   try {
-    final cacheKey = _detailCacheKey(analysisId, clause);
-    final decoded = _detailCache[cacheKey] ??
-        await _fetchClauseDetail(analysisId, clause);
-    _detailCache[cacheKey] = decoded;
+    final decoded = await _getClauseDetailWithCache(analysisId, clause);
 
     final clauseText = _stringFromMap(decoded['clause_text']) ?? clause.body;
     final tenantArgument =
@@ -1471,8 +1851,9 @@ Future<void> _openDetail(
       debugPrint('[result] detail error after dispose: $error');
       return;
     }
+    final message = _friendlyDetailErrorMessage(error);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('상세 로드 실패: $error')),
+      SnackBar(content: Text(message)),
     );
   } finally {
     if (dialogShown && context.mounted) {
@@ -1485,26 +1866,106 @@ Future<Map<String, dynamic>> _fetchClauseDetail(
   String analysisId,
   ContractClause clause,
 ) async {
+  const maxAttempts = 3;
+  const timeoutPerAttempt = Duration(seconds: 20);
   final clauseId = clause.id?.toString() ?? clause.lookupKey ?? clause.title;
   final uri = Uri.parse(
     'http://3.38.43.65:8000/analysis/$analysisId/clause/${Uri.encodeComponent(clauseId)}',
   );
-  debugPrint('[result] detail request url=$uri');
-  final response =
-      await http.get(uri).timeout(const Duration(seconds: 10));
-  final body = utf8.decode(response.bodyBytes);
-  debugPrint(
-    '[result] detail response status=${response.statusCode} '
-    'length=${body.length}',
-  );
-  if (response.statusCode != 200) {
-    throw Exception('상세 API 오류: ${response.statusCode} ${body.trim()}');
+  debugPrint('[result] detail request url=$uri attempts=$maxAttempts');
+  Object? lastError;
+
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      debugPrint(
+        '[result] detail request attempt=$attempt '
+        'timeout=${timeoutPerAttempt.inSeconds}s',
+      );
+      final response = await http.get(uri).timeout(timeoutPerAttempt);
+      final body = utf8.decode(response.bodyBytes);
+      debugPrint(
+        '[result] detail response status=${response.statusCode} '
+        'length=${body.length} attempt=$attempt',
+      );
+      if (response.statusCode != 200) {
+        throw Exception('상세 API 오류: ${response.statusCode} ${body.trim()}');
+      }
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('상세 API 응답 형식이 올바르지 않습니다.');
+      }
+      return decoded;
+    } on TimeoutException catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await Future<void>.delayed(Duration(milliseconds: 600 * attempt));
+        continue;
+      }
+      throw Exception('상세 정보를 불러오는 중 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+    } on http.ClientException catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await Future<void>.delayed(Duration(milliseconds: 600 * attempt));
+        continue;
+      }
+      throw Exception('네트워크 연결이 불안정합니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.');
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await Future<void>.delayed(Duration(milliseconds: 600 * attempt));
+        continue;
+      }
+      rethrow;
+    }
   }
-  final decoded = jsonDecode(body);
-  if (decoded is! Map<String, dynamic>) {
-    throw Exception('상세 API 응답 형식이 올바르지 않습니다.');
+  throw Exception('상세 정보를 불러오지 못했습니다: ${lastError ?? '알 수 없는 오류'}');
+}
+
+Future<Map<String, dynamic>> _getClauseDetailWithCache(
+  String analysisId,
+  ContractClause clause,
+) async {
+  final cacheKey = _detailCacheKey(analysisId, clause);
+  final cached = _detailCache[cacheKey];
+  if (cached != null) {
+    return cached;
   }
-  return decoded;
+
+  final inFlight = _detailInFlight[cacheKey];
+  if (inFlight != null) {
+    debugPrint('[result] detail join in-flight key=$cacheKey');
+    return inFlight;
+  }
+
+  final future = _fetchClauseDetail(analysisId, clause);
+  _detailInFlight[cacheKey] = future;
+  try {
+    final decoded = await future;
+    _detailCache[cacheKey] = decoded;
+    return decoded;
+  } finally {
+    _detailInFlight.remove(cacheKey);
+  }
+}
+
+String _friendlyDetailErrorMessage(Object error) {
+  final text = error.toString();
+  if (text.contains('시간이 초과')) {
+    return '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.';
+  }
+  if (text.contains('네트워크 연결이 불안정')) {
+    return '네트워크 상태를 확인한 뒤 다시 시도해 주세요.';
+  }
+  if (text.contains('상세 API 오류: 404')) {
+    return '요청한 조항 상세 데이터를 찾을 수 없습니다.';
+  }
+  if (text.contains('상세 API 오류: 5')) {
+    return '서버 오류로 상세 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  }
+  if (text.contains('상세 API 오류')) {
+    return '상세 데이터 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+  }
+  return '상세 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
 }
 
 List<ResultSummarySpan> _buildClauseSummarySpans(
@@ -1602,3 +2063,4 @@ List<String> _stringListFrom(dynamic value) {
   }
   return [single];
 }
+
