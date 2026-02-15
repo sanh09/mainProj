@@ -164,13 +164,9 @@ class ContractAnalysisPipeline:
         print("     유사도 검색 완료")
         print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")
         
-        # 6단계: 위험 유형 매핑
+        # 6단계: 위험 유형 매핑 (카테고리 계산은 4단계 쿼리 생성에 이미 활용)
         print("[6/8] 위험 유형 매핑...")
         step_start = time.perf_counter()
-        risk_mappings = {}
-        for clause in risky_clauses:
-            category = self.risk_mapper.map_risk_category(clause, all_precedents)
-            risk_mappings[clause.id] = category
         print("     위험 유형 분류 완료")
         print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
         

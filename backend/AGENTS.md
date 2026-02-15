@@ -3,14 +3,14 @@
 ## Project Structure & Module Organization
 This repository is a monorepo with `frontend/`, `backend/`, and `realtime/`. This guide targets `backend/`.
 - Core pipeline modules live at the backend root: `pipeline.py`, `ocr.py`, `text_processor.py`, `risk_assessor.py`, `precedent_fetcher.py`, `law_fetcher.py`, `embedding_manager.py`, `risk_mapper.py`, `debate_agents.py`, and `llm_summarizer.py`.
-- API entrypoints: `api.py` and `app/main.py`.
+- API entrypoint: `app/main.py`.
 - Data support: `db/` for persistence-related code and `uploads/` for incoming files.
 - Keep new tests under `backend/tests/` (create if missing).
 
 ## Build, Test, and Development Commands
 Run from `backend/` unless noted.
 - `pip install requests openai fastapi uvicorn python-dotenv psycopg[binary] python-multipart email-validator`: install core dependencies.
-- `uvicorn api:app --reload --port 8000`: start FastAPI with hot reload.
+- `uvicorn app.main:app --reload --port 8000`: start FastAPI with hot reload.
 - `python -c "from pipeline import ContractAnalysisPipeline; p=ContractAnalysisPipeline(); p.analyze(r'file.pdf')"`: run pipeline from CLI.
 - Optional Conda setup: `conda env create -f environment.yml && conda activate appenv`.
 

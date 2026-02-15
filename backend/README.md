@@ -105,7 +105,7 @@ python -c "from pipeline import ContractAnalysisPipeline; p=ContractAnalysisPipe
 ## FastAPI 실행
 ```bash
 cd backend
-uvicorn api:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 ```
 
 ### API 예시
@@ -159,7 +159,7 @@ https://www.law.go.kr/DRF/lawSearch.do?OC=YOUR_OC&target=prec&type=JSON&query=�
 ## 파일 구조
 ```
 backend/
-  api.py
+  app/main.py
   pipeline.py
   ocr.py
   text_processor.py

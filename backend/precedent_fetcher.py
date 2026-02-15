@@ -17,7 +17,6 @@ class PrecedentFetcher:
         self.api_url = api_url or os.getenv("PRECEDENT_API_URL") or ""
         self.api_key = api_key or os.getenv("PRECEDENT_API_KEY") or "api필요"
         self.detail_limit = int(os.getenv("PRECEDENT_DETAIL_LIMIT") or "10")
-        self._local_store: List[Precedent] = []
         self.prefer_db = os.getenv("PRECEDENT_PREFER_DB", "true").lower() in (
             "1",
             "true",
@@ -139,8 +138,3 @@ class PrecedentFetcher:
             precedent.summary = precedent.summary or str(detail.get("판시사항", ""))
             precedent.key_paragraph = precedent.key_paragraph or str(detail.get("판결요지", ""))
 
-    def get_precedents_by_keyword(self, keyword: str) -> List[Precedent]:
-        return [p for p in self._local_store if keyword in p.keywords]
-
-    def add_precedent(self, precedent: Precedent) -> None:
-        self._local_store.append(precedent)

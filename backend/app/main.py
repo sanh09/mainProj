@@ -1,13 +1,11 @@
 import os
 import json
-import time
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 from uuid import uuid4
 from threading import Lock
-
 import psycopg
 import requests
 from psycopg.rows import dict_row
@@ -18,10 +16,8 @@ from pydantic import BaseModel, EmailStr
 from pipeline import ContractAnalysisPipeline
 class UTF8JSONResponse(JSONResponse):
     media_type = "application/json; charset=utf-8"
-
 app = FastAPI(default_response_class=UTF8JSONResponse)
 pipeline = ContractAnalysisPipeline()
-
 ANALYSIS_STORE: dict[str, dict[str, Any]] = {}
 ANALYSIS_LOCK = Lock()
 ANALYSIS_TTL_SECONDS = int(os.getenv("ANALYSIS_TTL_SECONDS", "3600"))
@@ -29,19 +25,6 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploads/user_files")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "user-files")
-DEBATE_BACKGROUND_ENABLED = os.getenv("DEBATE_BACKGROUND_ENABLED", "1") not in (
-    "0",
-    "false",
-    "False",
-)
-DEBATE_BACKGROUND_MAX_CLAUSES = int(os.getenv("DEBATE_BACKGROUND_MAX_CLAUSES", "0"))
-DEBATE_BACKGROUND_SLEEP_SEC = float(os.getenv("DEBATE_BACKGROUND_SLEEP_SEC", "0"))
-DEBATE_OVERALL_SUMMARY_ENABLED = os.getenv("DEBATE_OVERALL_SUMMARY_ENABLED", "1") not in (
-    "0",
-    "false",
-    "False",
-)
-
 def _get_db_conn():
     return psycopg.connect(
         host=os.getenv("DB_HOST", "db"),
@@ -51,28 +34,6 @@ def _get_db_conn():
         dbname=os.getenv("DB_NAME", "app_db"),
         sslmode=os.getenv("DB_SSLMODE", "require"),
     )
-
-
-def _update_history_summary(history_id: int, summary: str) -> None:
-    conn = None
-    cur = None
-    try:
-        conn = _get_db_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE analysis_history SET summary=%s WHERE id=%s",
-            (summary, history_id),
-        )
-        conn.commit()
-    finally:
-        try:
-            if cur is not None:
-                cur.close()
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
-
 def _upload_to_supabase_storage(
     local_path: str, remote_path: str, content_type: str
 ) -> Optional[str]:
@@ -92,7 +53,6 @@ def _upload_to_supabase_storage(
             f"Supabase Storage upload failed: {response.status_code} {response.text}"
         )
     return f"{SUPABASE_STORAGE_BUCKET}/{remote_path}"
-
 def _ensure_analysis_columns():
     conn = None
     cur = None
@@ -131,7 +91,6 @@ def _ensure_analysis_columns():
                 conn.close()
         except Exception:
             pass
-
 def _normalize_filename(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
@@ -140,7 +99,7 @@ def _normalize_filename(name: Optional[str]) -> Optional[str]:
         return None
     # Heuristic fix for mojibake when UTF-8 bytes were decoded as latin-1.
     try:
-        if any(ch == "�" for ch in cleaned) or "?" in cleaned:
+        if "?" in cleaned:
             repaired = cleaned.encode("latin-1").decode("utf-8")
             if repaired.strip():
                 return repaired
@@ -169,7 +128,6 @@ def _max_risk_level(clauses: list) -> Optional[str]:
             highest_score = score
             highest = value
     return highest
-
 def _format_result_for_app(result: Any, analysis_id: str) -> dict:
     risky_clauses = result.risky_clauses or []
     article_to_clause_id = {}
@@ -182,7 +140,6 @@ def _format_result_for_app(result: Any, analysis_id: str) -> dict:
         if clause_id and clause_id not in clause_id_to_reason:
             raw_reason = _serialize(getattr(clause, "risk_reason", None))
             clause_id_to_reason[clause_id] = _normalize_reason(raw_reason)
-
     return {
         "analysis_id": analysis_id,
         "raw_text": _serialize(result.raw_text),
@@ -191,7 +148,6 @@ def _format_result_for_app(result: Any, analysis_id: str) -> dict:
         "article_to_clause_id": article_to_clause_id,
         "clause_id_to_reason": clause_id_to_reason,
     }
-
 def _prune_store():
     if ANALYSIS_TTL_SECONDS <= 0:
         return
@@ -203,7 +159,6 @@ def _prune_store():
             stale_ids.append(analysis_id)
     for analysis_id in stale_ids:
         ANALYSIS_STORE.pop(analysis_id, None)
-
 def _store_result(result: Any) -> str:
     analysis_id = uuid4().hex
     with ANALYSIS_LOCK:
@@ -211,103 +166,8 @@ def _store_result(result: Any) -> str:
         ANALYSIS_STORE[analysis_id] = {
             "result": result,
             "created_at": datetime.utcnow(),
-            "debate_by_clause": {},
-            "debate_summary": {},
-            "debate_locks": {},
-            "debate_ui_payload": {},
         }
     return analysis_id
-
-def _get_clause_lock(entry: dict[str, Any], clause_key: str) -> Lock:
-    with ANALYSIS_LOCK:
-        locks = entry.setdefault("debate_locks", {})
-        if clause_key not in locks:
-            locks[clause_key] = Lock()
-        return locks[clause_key]
-
-
-def _run_background_debates(analysis_id: str) -> None:
-    if not os.getenv("OPENAI_API_KEY"):
-        return
-    entry = _get_entry(analysis_id)
-    result = entry["result"]
-    risky_clauses = list(result.risky_clauses or [])
-    if DEBATE_BACKGROUND_MAX_CLAUSES > 0:
-        risky_clauses = risky_clauses[:DEBATE_BACKGROUND_MAX_CLAUSES]
-    if not risky_clauses:
-        return
-
-    for clause in risky_clauses:
-        clause_id = getattr(clause, "id", None)
-        if not clause_id:
-            continue
-        clause_key = str(clause_id)
-        lock = _get_clause_lock(entry, clause_key)
-        if not lock.acquire(blocking=False):
-            continue
-        with ANALYSIS_LOCK:
-            summary_cache = entry.get("debate_summary", {})
-            if clause_key in summary_cache:
-                lock.release()
-                continue
-        try:
-            transcript = pipeline.debate_agents.run(
-                [clause],
-                raw_text=result.raw_text,
-                contract_type=result.contract_type,
-            )
-            transcript_text = _format_transcript_text(transcript)
-            summary = pipeline.llm_summarizer.generate_debate_summary(transcript_text)
-            with ANALYSIS_LOCK:
-                entry["debate_by_clause"][clause_key] = transcript
-                entry["debate_summary"][clause_key] = summary
-        except Exception as exc:
-            with ANALYSIS_LOCK:
-                entry["debate_by_clause"][clause_key] = [
-                    {"speaker": "system", "content": f"error: {exc}"}
-                ]
-                entry["debate_summary"][clause_key] = ""
-        finally:
-            lock.release()
-        if DEBATE_BACKGROUND_SLEEP_SEC > 0:
-            try:
-                time.sleep(DEBATE_BACKGROUND_SLEEP_SEC)
-            except Exception:
-                pass
-
-    if not DEBATE_OVERALL_SUMMARY_ENABLED:
-        return
-    try:
-        with ANALYSIS_LOCK:
-            summary_cache = dict(entry.get("debate_summary", {}))
-            history_id = entry.get("history_id")
-        overall_parts = []
-        for clause in risky_clauses:
-            clause_id = getattr(clause, "id", None)
-            if not clause_id:
-                continue
-            clause_key = str(clause_id)
-            summary = summary_cache.get(clause_key)
-            if summary:
-                title = f"{clause.article_num} {clause.title}".strip()
-                overall_parts.append(f"{title}\n{summary}")
-        if not overall_parts:
-            return
-        overall_text = "\n\n".join(overall_parts)
-        overall_summary = pipeline.llm_summarizer.generate_overall_debate_summary(
-            overall_text
-        )
-        with ANALYSIS_LOCK:
-            entry["debate_overall_summary"] = overall_summary
-            try:
-                entry["result"].llm_summary = overall_summary
-            except Exception:
-                pass
-        if history_id:
-            _update_history_summary(history_id, overall_summary)
-    except Exception:
-        pass
-
 def _get_entry(analysis_id: str) -> dict[str, Any]:
     with ANALYSIS_LOCK:
         _prune_store()
@@ -315,7 +175,6 @@ def _get_entry(analysis_id: str) -> dict[str, Any]:
     if not entry:
         raise HTTPException(status_code=404, detail="Analysis not found")
     return entry
-
 def _find_clause(result: Any, clause_id: str):
     target = _normalize_clause_key(clause_id)
     for clause in result.risky_clauses or []:
@@ -325,8 +184,6 @@ def _find_clause(result: Any, clause_id: str):
         if _clause_matches(clause, clause_id, target):
             return clause
     return None
-
-
 def _normalize_clause_key(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -334,20 +191,16 @@ def _normalize_clause_key(value: Optional[str]) -> str:
     normalized = normalized.replace(" ", "")
     normalized = normalized.replace("\u3000", "")
     return normalized.lower()
-
-
 def _clause_matches(clause: Any, raw_id: str, normalized_target: str) -> bool:
     clause_id = getattr(clause, "id", None)
     article_num = getattr(clause, "article_num", None)
     title = getattr(clause, "title", None)
-
     if clause_id and str(clause_id) == raw_id:
         return True
     if article_num and str(article_num) == raw_id:
         return True
     if title and str(title) == raw_id:
         return True
-
     if normalized_target:
         if clause_id and _normalize_clause_key(str(clause_id)) == normalized_target:
             return True
@@ -356,43 +209,35 @@ def _clause_matches(clause: Any, raw_id: str, normalized_target: str) -> bool:
         if title and _normalize_clause_key(str(title)) == normalized_target:
             return True
     return False
-
-
 def _build_why_check_message(risk_reason: str, clause_text: str) -> str:
     reason = (risk_reason or "").strip()
     if reason:
         return (
-            f"이 조항은 '{reason}' 사유로 분쟁 가능성이 있습니다. "
-            "문구의 적용 범위와 책임 기준을 구체적으로 확인해야 합니다."
+            f"??議고빆? '{reason}' ?ъ쑀濡?遺꾩웳 媛?μ꽦???덉뒿?덈떎. "
+            "臾멸뎄???곸슜 踰붿쐞? 梨낆엫 湲곗???援ъ껜?곸쑝濡??뺤씤?댁빞 ?⑸땲??"
         )
-
     text = (clause_text or "").strip()
     if text:
         return (
-            "이 조항은 책임 범위와 비용 부담 기준이 모호하면 분쟁으로 이어질 수 있습니다. "
-            "조건과 예외를 명확히 확인해야 합니다."
+            "??議고빆? 梨낆엫 踰붿쐞? 鍮꾩슜 遺??湲곗???紐⑦샇?섎㈃ 遺꾩웳?쇰줈 ?댁뼱吏????덉뒿?덈떎. "
+            "議곌굔怨??덉쇅瑜?紐낇솗???뺤씤?댁빞 ?⑸땲??"
         )
-
-    return "이 조항은 해석 차이로 분쟁이 생길 수 있으므로 적용 기준을 확인해야 합니다."
-
-
+    return "??議고빆? ?댁꽍 李⑥씠濡?遺꾩웳???앷만 ???덉쑝誘濡??곸슜 湲곗????뺤씤?댁빞 ?⑸땲??"
 def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
     clause_text = getattr(clause, "content", None) or ""
     risk_reason = getattr(clause, "risk_reason", None) or ""
     highlight_keywords = getattr(clause, "highlight_keywords", None) or []
     highlight_sentences = getattr(clause, "highlight_sentences", None) or []
-
     tenant_argument = getattr(clause, "tenant_argument", None) or ""
     landlord_argument = getattr(clause, "landlord_argument", None) or ""
     tenant_tags = getattr(clause, "tenant_tags", None) or []
     landlord_tags = getattr(clause, "landlord_tags", None) or []
     negotiation_points = getattr(clause, "negotiation_points", None) or []
     compromise_quote = getattr(clause, "compromise_quote", None) or ""
-
     if not tenant_argument and risk_reason:
-        tenant_argument = f"해당 조항의 '{risk_reason}' 부분에 대한 조정이 필요합니다."
+        tenant_argument = f"?대떦 議고빆??'{risk_reason}' 遺遺꾩뿉 ???議곗젙???꾩슂?⑸땲??"
     if not landlord_argument and risk_reason:
-        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 필요합니다."
+        landlord_argument = f"?대떦 議고빆? '{risk_reason}' ?ъ쑀濡??꾩슂?⑸땲??"
     if not tenant_tags and highlight_keywords:
         tenant_tags = list(highlight_keywords)
     if not landlord_tags and highlight_keywords:
@@ -403,9 +248,8 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
         elif risk_reason:
             negotiation_points = [risk_reason]
     if not compromise_quote and (tenant_argument or landlord_argument):
-        compromise_quote = "상호 협의하여 합리적인 범위로 조정한다."
+        compromise_quote = "?곹샇 ?묒쓽?섏뿬 ?⑸━?곸씤 踰붿쐞濡?議곗젙?쒕떎."
     why_check = _build_why_check_message(risk_reason, clause_text)
-
     return {
         "clause_text": clause_text,
         "risk_reason": risk_reason,
@@ -417,25 +261,21 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
         "compromise_quote": compromise_quote,
         "why_check": why_check,
     }
-
-
 def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
     clause_text = clause.get("content") or clause.get("body") or clause.get("text") or ""
     risk_reason = clause.get("risk_reason") or ""
     highlight_keywords = clause.get("highlight_keywords") or []
     highlight_sentences = clause.get("highlight_sentences") or []
-
     tenant_argument = clause.get("tenant_argument") or ""
     landlord_argument = clause.get("landlord_argument") or ""
     tenant_tags = clause.get("tenant_tags") or []
     landlord_tags = clause.get("landlord_tags") or []
     negotiation_points = clause.get("negotiation_points") or []
     compromise_quote = clause.get("compromise_quote") or ""
-
     if not tenant_argument and risk_reason:
-        tenant_argument = f"해당 조항의 '{risk_reason}' 부분에 대한 조정이 필요합니다."
+        tenant_argument = f"?대떦 議고빆??'{risk_reason}' 遺遺꾩뿉 ???議곗젙???꾩슂?⑸땲??"
     if not landlord_argument and risk_reason:
-        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 필요합니다."
+        landlord_argument = f"?대떦 議고빆? '{risk_reason}' ?ъ쑀濡??꾩슂?⑸땲??"
     if not tenant_tags and highlight_keywords:
         tenant_tags = list(highlight_keywords)
     if not landlord_tags and highlight_keywords:
@@ -446,9 +286,8 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
         elif risk_reason:
             negotiation_points = [risk_reason]
     if not compromise_quote and (tenant_argument or landlord_argument):
-        compromise_quote = "상호 협의하여 합리적인 범위로 조정한다."
+        compromise_quote = "?곹샇 ?묒쓽?섏뿬 ?⑸━?곸씤 踰붿쐞濡?議곗젙?쒕떎."
     why_check = _build_why_check_message(risk_reason, clause_text)
-
     return {
         "clause_text": clause_text,
         "risk_reason": risk_reason,
@@ -466,18 +305,16 @@ def read_root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-def _format_transcript_text(transcript: list[dict]) -> str:
-    if not transcript:
-        return ""
-    lines = []
-    for turn in transcript:
-        speaker = turn.get("speaker", "")
-        content = turn.get("content", "")
-        lines.append(f"{speaker}: {content}".strip())
-    return "\n".join(lines)
-
-
+def _get_pipeline_debate_transcript(result: Any) -> list[dict]:
+    transcript = getattr(result, "debate_transcript", None)
+    return transcript if isinstance(transcript, list) else []
+def _get_pipeline_debate_summary(transcript: list[dict]) -> str:
+    for turn in reversed(transcript):
+        speaker = str(turn.get("speaker", "")).strip()
+        content = str(turn.get("content", "")).strip()
+        if speaker in ("??", "judge", "???", "mediator") and content:
+            return content
+    return ""
 def _build_summary_input(result, max_clauses: int = None, max_chars: int = None) -> str:
     clauses = list(result.risky_clauses or []) or list(result.clauses or [])
     if max_clauses is None:
@@ -503,78 +340,15 @@ def _build_summary_input(result, max_clauses: int = None, max_chars: int = None)
     if max_chars > 0 and len(text) > max_chars:
         text = text[:max_chars]
     return text
-
-
-def _build_debate_payload(
-    clause: Clause,
-    clause_key: str,
-    raw_text: Optional[str],
-    contract_type: Optional[str],
-    entry: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    summary = ""
-    transcript = []
-    if entry is not None:
-        summary_cache = entry.get("debate_summary") or {}
-        transcript_cache = entry.get("debate_by_clause") or {}
-        if clause_key in summary_cache:
-            cached_summary = summary_cache.get(clause_key)
-            if isinstance(cached_summary, str):
-                summary = cached_summary
-        if clause_key in transcript_cache:
-            cached_transcript = transcript_cache.get(clause_key)
-            if isinstance(cached_transcript, list):
-                transcript = cached_transcript
+def _build_debate_payload(result: Optional[Any]) -> dict[str, Any]:
+    transcript = _get_pipeline_debate_transcript(result)
+    summary = _get_pipeline_debate_summary(transcript)
     return {
         "debate_summary": summary,
         "debate_transcript": transcript,
     }
-
-
-def _build_debate_ui_payload(
-    clause: Clause,
-    clause_key: str,
-    raw_text: Optional[str],
-    contract_type: Optional[str],
-    entry: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    if entry is not None:
-        cache = entry.get("debate_ui_payload") or {}
-        cached = cache.get(clause_key)
-        if isinstance(cached, dict):
-            return cached
+def _build_debate_ui_payload() -> dict[str, Any]:
     return {}
-
-
-def _clause_from_dict(clause: dict[str, Any]) -> Clause:
-    return Clause(
-        id=str(clause.get("id") or clause.get("clause_id") or ""),
-        article_num=str(clause.get("article_num") or clause.get("article") or ""),
-        title=str(clause.get("title") or clause.get("name") or ""),
-        content=str(clause.get("content") or clause.get("body") or clause.get("text") or ""),
-    )
-
-
-def _format_clause_ui_input(clause: Any, transcript: list[dict]) -> str:
-    parts = []
-    article = getattr(clause, "article_num", None) or ""
-    title = getattr(clause, "title", None) or ""
-    content = getattr(clause, "content", None) or ""
-    risk_reason = getattr(clause, "risk_reason", None) or ""
-    parts.append(f"조항: {article} {title}".strip())
-    if content:
-        parts.append(f"본문: {content}")
-    if risk_reason:
-        parts.append(f"위험 사유: {risk_reason}")
-    highlight_keywords = getattr(clause, "highlight_keywords", None) or []
-    highlight_sentences = getattr(clause, "highlight_sentences", None) or []
-    if highlight_keywords:
-        parts.append("핵심 키워드: " + ", ".join([str(k) for k in highlight_keywords]))
-    if highlight_sentences:
-        parts.append("하이라이트 문장:\n" + "\n".join(highlight_sentences))
-    if transcript:
-        parts.append("토론 요약 입력:\n" + _format_transcript_text(transcript))
-    return "\n\n".join([p for p in parts if p])
 @app.post("/analyze/file")
 async def analyze_file(
     file: UploadFile = File(...),
@@ -599,7 +373,6 @@ async def analyze_file(
         with open(saved_path, "wb") as out:
             out.write(contents)
         storage_path = saved_path
-
         result = pipeline.analyze(saved_path)
         # Ensure DB summary is populated when possible
         if not result.llm_summary and os.getenv('OPENAI_API_KEY'):
@@ -610,7 +383,7 @@ async def analyze_file(
                 except Exception:
                     pass
         raw_text = (result.raw_text or "").strip()
-        if raw_text == "api필요":
+        if raw_text == "api?꾩슂":
             raise HTTPException(
                 status_code=503,
                 detail="Document extraction failed: OPENAI_API_KEY is missing.",
@@ -626,13 +399,11 @@ async def analyze_file(
                 detail="Clause splitting fallback requires OPENAI_API_KEY.",
             )
         analysis_id = _store_result(result)
-
         risky_count = len(result.risky_clauses or [])
         risk_level = _max_risk_level(result.risky_clauses or [])
         summary = result.llm_summary or ""
         clauses_json = json.dumps(_serialize(result.clauses), ensure_ascii=False)
         risky_clauses_json = json.dumps(_serialize(result.risky_clauses), ensure_ascii=False)
-
         resolved_user_id = user_id
         if resolved_user_id is None and email:
             conn = _get_db_conn()
@@ -645,7 +416,6 @@ async def analyze_file(
             conn.close()
             cur = None
             conn = None
-
         if resolved_user_id is not None:
             _ensure_analysis_columns()
             conn = _get_db_conn()
@@ -704,7 +474,6 @@ async def analyze_file(
                         entry["history_id"] = history_id
                 except Exception:
                     pass
-
         return UTF8JSONResponse(
             content={
                 "analysis_id": analysis_id,
@@ -735,7 +504,6 @@ async def analyze_file(
             pass
         if saved_path and not os.path.exists(saved_path):
             saved_path = None
-
 @app.get("/history")
 def get_history(user_id: int = Query(...)) -> UTF8JSONResponse:
     conn = None
@@ -765,7 +533,6 @@ def get_history(user_id: int = Query(...)) -> UTF8JSONResponse:
                 conn.close()
         except Exception:
             pass
-
 @app.get("/analysis/{analysis_id}")
 def get_analysis_detail(analysis_id: int) -> UTF8JSONResponse:
     conn = None
@@ -836,7 +603,6 @@ def get_analysis_detail(analysis_id: int) -> UTF8JSONResponse:
                 conn.close()
         except Exception:
             pass
-
 @app.get("/files")
 def get_files(user_id: int = Query(...)) -> UTF8JSONResponse:
     conn = None
@@ -866,7 +632,6 @@ def get_files(user_id: int = Query(...)) -> UTF8JSONResponse:
                 conn.close()
         except Exception:
             pass
-
 @app.get("/analysis/{analysis_id}/clauses/{clause_id}/debate/summary")
 def get_clause_debate_summary(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
     entry = _get_entry(analysis_id)
@@ -874,21 +639,8 @@ def get_clause_debate_summary(analysis_id: str, clause_id: str) -> UTF8JSONRespo
     clause = _find_clause(result, clause_id)
     if not clause:
         raise HTTPException(status_code=404, detail="Clause not found")
-    summary_cache = entry["debate_summary"]
-    if clause_id in summary_cache:
-        return UTF8JSONResponse(
-            content={
-                "clause_id": clause_id,
-                "article_num": clause.article_num,
-                "title": clause.title,
-                "summary": summary_cache[clause_id],
-            }
-        )
-    transcript_cache = entry["debate_by_clause"]
-    transcript = transcript_cache.get(clause_id)
-    if not isinstance(transcript, list):
-        transcript = []
-    summary = ""
+    transcript = _get_pipeline_debate_transcript(result)
+    summary = _get_pipeline_debate_summary(transcript)
     return UTF8JSONResponse(
         content={
             "clause_id": clause_id,
@@ -897,7 +649,6 @@ def get_clause_debate_summary(analysis_id: str, clause_id: str) -> UTF8JSONRespo
             "summary": summary,
         }
     )
-
 @app.get("/analysis/{analysis_id}/clause/{clause_id}")
 def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
     try:
@@ -908,19 +659,9 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
             raise HTTPException(status_code=404, detail="Clause not found")
         detail = _clause_detail_from_obj(clause)
         debate_payload = _build_debate_payload(
-            clause=clause,
-            clause_key=clause_id,
-            raw_text=result.raw_text,
-            contract_type=result.contract_type,
-            entry=entry,
+            result=result,
         )
-        debate_ui_payload = _build_debate_ui_payload(
-            clause=clause,
-            clause_key=clause_id,
-            raw_text=result.raw_text,
-            contract_type=result.contract_type,
-            entry=entry,
-        )
+        debate_ui_payload = _build_debate_ui_payload()
         detail.update(debate_payload)
         detail["debate_ui"] = debate_ui_payload
         return UTF8JSONResponse(content=detail)
@@ -929,7 +670,6 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
             raise
     except Exception:
         raise
-
     conn = None
     cur = None
     try:
@@ -965,21 +705,17 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 risky_clauses = json.loads(risky_raw) if risky_raw else []
         except (TypeError, json.JSONDecodeError):
             risky_clauses = []
-
         normalized_target = _normalize_clause_key(clause_id)
-
         def matches(target: dict[str, Any]) -> bool:
             raw_id = str(target.get("id", "")).strip()
             article_num = str(target.get("article_num", "")).strip()
             title = str(target.get("title", "")).strip()
-
             if raw_id and raw_id == clause_id:
                 return True
             if article_num and article_num == clause_id:
                 return True
             if title and title == clause_id:
                 return True
-
             if normalized_target:
                 if raw_id and _normalize_clause_key(raw_id) == normalized_target:
                     return True
@@ -988,50 +724,26 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 if title and _normalize_clause_key(title) == normalized_target:
                     return True
             return False
-
         for clause in risky_clauses:
             if isinstance(clause, dict) and matches(clause):
                 detail = _clause_detail_from_dict(clause)
-                clause_obj = _clause_from_dict(clause)
                 debate_payload = _build_debate_payload(
-                    clause=clause_obj,
-                    clause_key=clause_id,
-                    raw_text=raw_text,
-                    contract_type=None,
-                    entry=None,
+                    result=None,
                 )
-                debate_ui_payload = _build_debate_ui_payload(
-                    clause=clause_obj,
-                    clause_key=clause_id,
-                    raw_text=raw_text,
-                    contract_type=None,
-                    entry=None,
-                )
+                debate_ui_payload = _build_debate_ui_payload()
                 detail.update(debate_payload)
                 detail["debate_ui"] = debate_ui_payload
                 return UTF8JSONResponse(content=detail)
         for clause in clauses:
             if isinstance(clause, dict) and matches(clause):
                 detail = _clause_detail_from_dict(clause)
-                clause_obj = _clause_from_dict(clause)
                 debate_payload = _build_debate_payload(
-                    clause=clause_obj,
-                    clause_key=clause_id,
-                    raw_text=raw_text,
-                    contract_type=None,
-                    entry=None,
+                    result=None,
                 )
-                debate_ui_payload = _build_debate_ui_payload(
-                    clause=clause_obj,
-                    clause_key=clause_id,
-                    raw_text=raw_text,
-                    contract_type=None,
-                    entry=None,
-                )
+                debate_ui_payload = _build_debate_ui_payload()
                 detail.update(debate_payload)
                 detail["debate_ui"] = debate_ui_payload
                 return UTF8JSONResponse(content=detail)
-
         raise HTTPException(status_code=404, detail="Clause not found")
     except HTTPException:
         raise
@@ -1046,7 +758,6 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 conn.close()
         except Exception:
             pass
-
 @app.get("/analysis/{analysis_id}/clauses/{clause_id}/debate/transcript")
 def get_clause_debate_transcript(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
     entry = _get_entry(analysis_id)
@@ -1054,10 +765,7 @@ def get_clause_debate_transcript(analysis_id: str, clause_id: str) -> UTF8JSONRe
     clause = _find_clause(result, clause_id)
     if not clause:
         raise HTTPException(status_code=404, detail="Clause not found")
-    transcript_cache = entry["debate_by_clause"]
-    transcript = transcript_cache.get(clause_id)
-    if not isinstance(transcript, list):
-        transcript = []
+    transcript = _get_pipeline_debate_transcript(result)
     return UTF8JSONResponse(
         content={
             "clause_id": clause_id,
@@ -1099,7 +807,7 @@ def signup(req: SignupRequest):
         conn.commit()
         return {"result": "ok"}
     except Exception as e:
-        # 🔥 이 줄이 핵심
+        # ?뵦 ??以꾩씠 ?듭떖
         print("SIGNUP ERROR >>>", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
     finally:
