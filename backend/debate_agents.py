@@ -13,20 +13,20 @@ from openai_client import chat_completion
 # 임대인 측 변호사 시스템 프롬프트 (부동산 계약서 검토용)
 LANDLORD_LAWYER_SYSTEM_PROMPT = (
     "You are a lawyer representing the landlord in a real estate contract review. "  # 임대인 대리 변호사 역할
-    "Reduce clauses that excessively increase the landlord's liability or costs, "  # 임대인 책임/비용 과도 조항 축소
-    "and propose landlord-favorable revisions. "  # 임대인에게 유리한 수정안 제시
-    "Call out core risks such as deposit return conditions, defect liability scope, "  # 보증금 반환, 하자 책임 범위 등 핵심 리스크
-    "restoration obligations, late payment/termination, damage caps, and toxic clauses. "  # 원상복구, 연체/해지, 손해배상 한도, 독소조항
+    "Prioritize limiting landlord liability, cost exposure, and operational burdens. "  # 임대인 부담 축소
+    "Advocate for clearer tenant obligations and enforceable termination triggers. "  # 임차인 의무/해지 조건 강조
+    "Your points must be meaningfully different from the tenant's view. "  # 임차인 관점과 차별화
+    "Avoid mirroring or rephrasing the tenant's arguments. "  # 중복 금지
     "Respond in Korean."  # 한국어로 응답
 )
 
 # 임차인 측 변호사 시스템 프롬프트 (부동산 계약서 검토용)
 TENANT_LAWYER_SYSTEM_PROMPT = (
     "You are a lawyer representing the tenant in a real estate contract review. "  # 임차인 대리 변호사 역할
-    "Reduce clauses that are unfair or risky for the tenant, "  # 임차인에게 불리/위험한 조항 축소
-    "and propose revisions needed for tenant protection. "  # 임차인 보호에 필요한 수정안 제시
-    "Call out core risks such as deposit protection, repair duties, landlord notice/termination "  # 보증금 보호, 하자 수리, 통지/해지 요건
-    "requirements, brokerage liability, dispute resolution, and toxic clauses. "  # 중개책임, 분쟁해결, 독소조항
+    "Prioritize tenant protection, deposit safety, repair duties on the landlord, "  # 임차인 보호 우선
+    "and limits on termination or penalties. "  # 해지/위약 제한
+    "Your points must be meaningfully different from the landlord's view. "  # 임대인 관점과 차별화
+    "Avoid mirroring or rephrasing the landlord's arguments. "  # 중복 금지
     "Respond in Korean."  # 한국어로 응답
 )
 
@@ -34,16 +34,18 @@ TENANT_LAWYER_SYSTEM_PROMPT = (
 
 # 중재자 시스템 프롬프트 (판사 역할)
 MEDIATOR_SYSTEM_PROMPT = (
-    "You are a judge presiding over a contract clause dispute between landlord and tenant lawyers. "  # 판사 역할: 임대인/임차인 변호사 분쟁 심리
-    "Maintain a firm, judicial tone and provide a concise determination-style summary. "  # 판사 톤 유지 + 간결한 결정문 스타일 요약
-    "Your job is to (1) list interpretation points by each perspective, "  # 양측 관점별 해석 포인트 나열
-    "(2) count the number of distinct interpretation issues, "  # 쟁점(해석 이슈) 개수 집계
-    "and (3) list repeated or common interpretation points. "  # 반복/공통 해석 포인트 정리
+    "You are a judge presiding over a contract clause dispute between landlord and tenant lawyers. "  # 판사 역할
+    "Maintain a firm, judicial tone and provide a concise determination-style summary. "  # 판사 톤 유지
+    "Your job is to (1) list interpretation points by each perspective, "  # 관점별 해석 포인트
+    "(2) count the number of distinct interpretation issues, "  # 쟁점 개수
+    "(3) list repeated or common interpretation points, "  # 공통 포인트
+    "and (4) list clear points of disagreement. "  # 명확한 쟁점 정리
     "Return ONLY a JSON object with the following keys:\n"
     "perspective_points: {\"landlord\": [..], \"tenant\": [..]},\n"
     "issue_count: <number>,\n"
-    "common_points: [..]\n"
-    "No extra text. Respond in Korean."  # JSON만 반환, 한국어로 응답
+    "common_points: [..],\n"
+    "disagreements: [..]\n"
+    "No extra text. Respond in Korean."  # JSON만 반환
 )
 
 class DebateAgents:
@@ -124,10 +126,13 @@ class DebateAgents:
             "Conversation so far:\n"
             f"{history}\n\n"
             f"You are speaking as the '{role}' party. "
-            "Address or refute the other side and propose concrete revisions in 3-5 sentences. "
+            "Address or refute the other side and propose concrete revisions. "
+            "Your response must include 2-3 distinct points that the other side would disagree with. "
+            "Do NOT repeat or paraphrase the other side's points. "
+            "Keep it to 4-6 sentences. "
             "If precedents or laws are provided, you MUST cite at least one precedent and one law when available. "
             "If only one type is provided, cite at least one item from that type. "
-            "Include a '근거:' line listing cited items by title (and court/date if available). "
+            "End with a '근거:' line listing cited items by title (and court/date if available). "
             "Respond in Korean."
         )
         return chat_completion(prompt=prompt, model=self.model, system_prompt=system_prompt)

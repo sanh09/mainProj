@@ -15,15 +15,21 @@ def _get_client():
 
 
 def chat_completion(
-    prompt: str, model: str = "gpt-5.2", system_prompt: str | None = None
+    prompt: str,
+    model: str = "gpt-5.2",
+    system_prompt: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     client = _get_client()
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
+    if max_tokens is None:
+        max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1200"))
     response = client.chat.completions.create(
         model=model,
         messages=messages,
+        max_tokens=max_tokens,
     )
     return response.choices[0].message.content or ""

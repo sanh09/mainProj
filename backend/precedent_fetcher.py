@@ -28,7 +28,7 @@ class PrecedentFetcher:
         self.max_pages = int(os.getenv("PRECEDENT_MAX_PAGES") or "5")
 
     def fetch_precedents(self, keyword: str) -> List[Precedent] | str:
-        db_only = os.getenv("PRECEDENT_DB_ONLY", "false").lower() in (
+        db_only = os.getenv("PRECEDENT_DB_ONLY", "true").lower() in (
             "1",
             "true",
             "yes",

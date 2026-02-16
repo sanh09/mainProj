@@ -8,7 +8,7 @@ import time
 from typing import List, Optional
 from dataclasses import asdict
 
-from ocr import GPTDocumentExtractor, get_extracted_text
+from ocr import UpstageDocumentExtractor, get_extracted_text
 from models import ContractAnalysisResult, Clause, Law, Precedent
 from text_processor import TextProcessor
 from risk_assessor import RiskAssessor
@@ -30,7 +30,7 @@ class ContractAnalysisPipeline:
     """계약서 분석 전체 파이프라인"""
     
     def __init__(self):
-        self.ocr = GPTDocumentExtractor()
+        self.ocr = UpstageDocumentExtractor()
         self.text_processor = TextProcessor()
         self.risk_assessor = RiskAssessor()
         self.precedent_fetcher = PrecedentFetcher()

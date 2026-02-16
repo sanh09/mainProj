@@ -5,12 +5,150 @@ import os
 from typing import Any, Dict
 
 
+class UpstageDocumentExtractor:
+    def __init__(self, api_key: str | None = None) -> None:
+        self.api_key = api_key or os.getenv("UPSTAGE_API_KEY") or ""
+        self.endpoint = (
+            os.getenv("UPSTAGE_OCR_ENDPOINT")
+            or "https://api.upstage.ai/v1/document-digitization"
+        )
+        self.model = (os.getenv("UPSTAGE_OCR_MODEL") or "document-parse").strip()
+        self.ocr = (os.getenv("UPSTAGE_OCR") or "force").strip().lower()
+        self.output_format = (os.getenv("DOC_EXTRACT_OUTPUT_FORMAT") or "markdown").lower()
+        self.coordinates = (
+            os.getenv("UPSTAGE_OCR_COORDINATES", "false").strip().lower()
+            in ("1", "true", "yes", "y")
+        )
+        self.timeout = int(os.getenv("UPSTAGE_OCR_TIMEOUT_SEC", "60"))
+
+    def extract_text_from_file(self, file_path: str) -> Dict[str, Any] | str:
+        if not self.api_key:
+            return "api필요"
+        return self.extract_structured_from_file(file_path)
+
+    def extract_structured_from_file(self, file_path: str) -> Dict[str, Any]:
+        mime_type, _ = mimetypes.guess_type(file_path)
+        mime_type = mime_type or "application/octet-stream"
+        if mime_type.startswith("text/"):
+            text = self._read_text_file(file_path)
+            return self._normalize_payload(
+                {"mode": self.output_format, "text": text, "markdown": text},
+                source_type="text",
+            )
+        payload = self._request_document_parse(file_path, mime_type)
+        return self._payload_from_upstage(payload)
+
+    def _request_document_parse(self, file_path: str, mime_type: str) -> Dict[str, Any]:
+        try:
+            import requests
+        except ImportError as exc:
+            raise RuntimeError(
+                "requests가 필요합니다. `pip install requests`로 설치하세요."
+            ) from exc
+        output_formats = ["markdown"]
+        if self.output_format in ("text", "markdown", "html"):
+            output_formats = [self.output_format]
+        data = {
+            "ocr": self.ocr,
+            "model": self.model,
+            "output_formats": json.dumps(output_formats),
+        }
+        if self.coordinates:
+            data["coordinates"] = "true"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        with open(file_path, "rb") as file_handle:
+            files = {"document": (os.path.basename(file_path), file_handle, mime_type)}
+            response = requests.post(
+                self.endpoint,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=self.timeout,
+            )
+        response.raise_for_status()
+        return response.json()
+
+    def _payload_from_upstage(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        content = payload.get("content") if isinstance(payload, dict) else {}
+        if not isinstance(content, dict):
+            content = {}
+        markdown = content.get("markdown") if isinstance(content.get("markdown"), str) else ""
+        text = content.get("text") if isinstance(content.get("text"), str) else ""
+        html = content.get("html") if isinstance(content.get("html"), str) else ""
+        if not markdown and self.output_format == "markdown":
+            markdown = text or html
+        if not text:
+            text = markdown or html
+        normalized = self._normalize_payload(
+            {
+                "mode": self.output_format,
+                "text": text,
+                "markdown": markdown,
+                "content_json": {},
+                "metadata": {},
+            },
+            source_type="upstage",
+        )
+        if html:
+            normalized["html"] = html
+        return normalized
+
+    @staticmethod
+    def _normalize_payload(payload: Dict[str, Any], source_type: str) -> Dict[str, Any]:
+        mode = payload.get("mode") if isinstance(payload, dict) else None
+        mode = mode if mode in ("markdown", "json") else "markdown"
+        text = payload.get("text") if isinstance(payload, dict) else ""
+        markdown = payload.get("markdown") if isinstance(payload, dict) else ""
+        content_json = payload.get("content_json") if isinstance(payload, dict) else {}
+        metadata = payload.get("metadata") if isinstance(payload, dict) else {}
+        if not isinstance(text, str):
+            text = ""
+        if not isinstance(markdown, str):
+            markdown = text
+        if not isinstance(content_json, dict):
+            content_json = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata.setdefault("headings", [])
+        metadata.setdefault("lists", [])
+        metadata.setdefault("tables", [])
+        if not text:
+            text = markdown
+        return {
+            "source_type": source_type,
+            "mode": mode,
+            "text": text,
+            "markdown": markdown,
+            "content_json": content_json,
+            "metadata": metadata,
+        }
+
+    @staticmethod
+    def _read_text_file(file_path: str) -> str:
+        with open(file_path, "rb") as file_handle:
+            raw = file_handle.read()
+        for encoding in ("utf-8", "euc-kr", "cp949"):
+            try:
+                return raw.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return raw.decode("utf-8", errors="ignore")
+
+
 class GPTDocumentExtractor:
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or "api필요"
-        self.model = model or os.getenv("OPENAI_OCR_MODEL") or "gpt-4o-mini"
+        self.model = (
+            model
+            or os.getenv("OPENAI_OCR_VISION_MODEL")
+            or os.getenv("OPENAI_OCR_MODEL")
+            or "gpt-5.2"
+        )
         self.output_format = (os.getenv("DOC_EXTRACT_OUTPUT_FORMAT") or "markdown").lower()
         self.max_input_chars = int(os.getenv("DOC_EXTRACT_MAX_INPUT_CHARS", "50000"))
+        self.detail = (os.getenv("OPENAI_OCR_IMAGE_DETAIL") or "auto").strip().lower()
+        self.reasoning_effort = (os.getenv("OPENAI_REASONING_EFFORT") or "none").strip().lower()
+        self.verbosity = (os.getenv("OPENAI_TEXT_VERBOSITY") or "low").strip().lower()
 
     def _get_client(self):
         try:
@@ -43,27 +181,34 @@ class GPTDocumentExtractor:
         with open(file_path, "rb") as file_handle:
             b64 = base64.b64encode(file_handle.read()).decode("ascii")
         data_url = f"data:{mime_type};base64,{b64}"
-        prompt = self._build_json_prompt(
-            "Extract text from the contract image and preserve document structure."
+        prompt = (
+            "You are doing OCR on a contract image. "
+            "Return JSON only with key: markdown. "
+            "markdown: structured Markdown with headings, clauses, lists, and tables when present. "
+            "Do not invent or omit content."
         )
         client = self._get_client()
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=self.model,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You extract contract documents accurately."},
+            reasoning={"effort": self.reasoning_effort},
+            text={"verbosity": self.verbosity},
+            input=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": data_url}},
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": data_url, "detail": self.detail},
                     ],
-                },
+                }
             ],
         )
-        content = response.choices[0].message.content or "{}"
-        parsed = self._safe_json(content)
-        return self._normalize_payload(parsed, source_type="image")
+        output_text = getattr(response, "output_text", "") or ""
+        parsed = self._safe_json(output_text)
+        markdown = str(parsed.get("markdown") or "").strip()
+        return self._normalize_payload(
+            {"mode": "markdown", "markdown": markdown, "text": markdown},
+            source_type="image",
+        )
 
     def _structure_text_with_gpt(self, text: str, source_type: str) -> Dict[str, Any]:
         if not text.strip():
@@ -81,14 +226,26 @@ class GPTDocumentExtractor:
             f"INPUT TEXT:\n{trimmed}"
         )
         client = self._get_client()
-        response = client.chat.completions.create(
-            model=self.model,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You extract and structure legal contract text."},
+        request_kwargs = {
+            "model": self.model,
+            "response_format": {"type": "json_object"},
+            "temperature": self.temperature,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an OCR post-processor for Korean legal contracts. "
+                        "Do NOT paraphrase, summarize, infer, or normalize facts. "
+                        "Keep wording as close to source as possible. "
+                        "If uncertain, keep source token or mark '[판독불가]'."
+                    ),
+                },
                 {"role": "user", "content": prompt},
             ],
-        )
+        }
+        if self.reasoning_effort:
+            request_kwargs["reasoning_effort"] = self.reasoning_effort
+        response = client.chat.completions.create(**request_kwargs)
         content = response.choices[0].message.content or "{}"
         parsed = self._safe_json(content)
         return self._normalize_payload(parsed, source_type=source_type)
@@ -97,6 +254,12 @@ class GPTDocumentExtractor:
         mode = "json" if self.output_format == "json" else "markdown"
         return (
             f"{task_text}\n\n"
+            "OCR rules:\n"
+            "- Preserve original wording; do not paraphrase.\n"
+            "- Preserve clause/article numbering exactly when visible.\n"
+            "- Preserve table cells and row order.\n"
+            "- If a token is unreadable, write '[판독불가]' instead of guessing.\n"
+            "- Do not fabricate missing values or dates.\n\n"
             "Return ONLY a JSON object with this schema:\n"
             "{\n"
             '  "mode": "markdown|json",\n'
@@ -177,7 +340,7 @@ class GPTDocumentExtractor:
         return "\n\n".join(texts)
 
 
-UpstageOCR = GPTDocumentExtractor
+UpstageOCR = UpstageDocumentExtractor
 
 
 def get_extracted_text(result: Any) -> str:

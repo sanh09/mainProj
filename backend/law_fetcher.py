@@ -44,7 +44,7 @@ class LawFetcher:
         self.max_pages = int(os.getenv("LAW_MAX_PAGES") or "5")
 
     def fetch_laws(self, keyword: str, targets: Optional[List[str]] = None) -> List[Law] | str:
-        db_only = os.getenv("LAW_DB_ONLY", "false").lower() in (
+        db_only = os.getenv("LAW_DB_ONLY", "true").lower() in (
             "1",
             "true",
             "yes",
