@@ -30,6 +30,16 @@ def chat_completion(
     response = client.chat.completions.create(
         model=model,
         messages=messages,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
     )
-    return response.choices[0].message.content or ""
+    content = response.choices[0].message.content or ""
+    if os.getenv("LOG_LLM_TOKENS", "false").lower() in ("1", "true", "yes", "y"):
+        input_chars = sum(len(m.get("content") or "") for m in messages)
+        output_chars = len(content)
+        approx_tokens = (input_chars + output_chars) // 4
+        print(
+            "[LLM TOKENS approx] "
+            f"label=chat_completion model={model} input_chars={input_chars} output_chars={output_chars} "
+            f"approx_tokens={approx_tokens}"
+        )
+    return content

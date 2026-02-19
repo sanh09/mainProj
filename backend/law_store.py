@@ -13,8 +13,8 @@ except Exception:
 
 
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "contract-rag")
-PINECONE_NAMESPACE = os.getenv("PINECONE_NAMESPACE_LAW", "laws")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "law-db")
+PINECONE_NAMESPACE = os.getenv("PINECONE_NAMESPACE_LAW", "law_chunks")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
@@ -263,7 +263,29 @@ def search_laws(keyword: str, limit: int = 20) -> List[Law]:
         return []
 
     matches = _query_by_vector(query_embedding, limit=limit)
-    return [_to_law(match) for match in matches]
+    items = [_to_law(match) for match in matches]
+    must_keywords = [
+        term.strip()
+        for term in (
+            os.getenv("LAW_MUST_KEYWORDS")
+            or "임대차,전세,월세,보증금,주택,임차,차임,주택임대차,보증금반환"
+        ).split(",")
+        if term.strip()
+    ]
+    if not must_keywords:
+        return items
+    filtered: List[Law] = []
+    for item in items:
+        text = " ".join(
+            [
+                item.title or "",
+                item.summary or "",
+                item.content or "",
+            ]
+        )
+        if any(k in text for k in must_keywords):
+            filtered.append(item)
+    return filtered
 
 
 def search_laws_by_vector(embedding: List[float], limit: int = 5) -> List[Law]:

@@ -11,74 +11,72 @@ from models import Clause, RiskType
 class RiskAssessor:
     _RISK_VALUE_MAP = {
         "critical": RiskType.CRITICAL,
-        "매우높음": RiskType.CRITICAL,
-        "매우 높음": RiskType.CRITICAL,
-        "치명": RiskType.CRITICAL,
+        "\uB9E4\uC6B0\uB192\uC74C": RiskType.CRITICAL,
+        "\uB9E4\uC6B0 \uB192\uC74C": RiskType.CRITICAL,
         "high": RiskType.HIGH,
-        "높음": RiskType.HIGH,
-        "중상": RiskType.HIGH,
+        "\uB192\uC74C": RiskType.HIGH,
         "medium": RiskType.MEDIUM,
-        "중간": RiskType.MEDIUM,
-        "보통": RiskType.MEDIUM,
+        "\uC911\uAC04": RiskType.MEDIUM,
+        "\uBCF4\uD1B5": RiskType.MEDIUM,
         "low": RiskType.LOW,
-        "낮음": RiskType.LOW,
+        "\uB0AE\uC74C": RiskType.LOW,
     }
 
-    # LLM 판정 과소평가를 줄이기 위한 키워드 하한 보정
+    # LLM \uacfc\uc18c\ud0d0\uc9c0 \ub300\ube44 \ud0a4\uc6cc\ub4dc \uae30\ubc18 \ubcf4\uc815 \uaddc\uce59
     _HEURISTIC_PATTERNS = {
         RiskType.CRITICAL: [
-            r"전액\s*배상",
-            r"무제한\s*배상",
-            r"모든\s*손해",
-            r"즉시\s*강제\s*집행",
-            r"보증금\s*몰수",
-            r"일방적\s*해지",
+            r"\uC804\uC561\s*\uBC30\uC0C1",
+            r"\uBB34\uC81C\uD55C\s*\uBC30\uC0C1",
+            r"\uBAA8\uB4E0\s*\uC190\uD574",
+            r"\uC989\uC2DC\s*\uAC15\uC81C\s*\uC9D1\uD589",
+            r"\uBCF4\uC99D\uAE08\s*\uBAB0\uC218",
+            r"\uC77C\uBC29\s*\uD574\uC9C0",
         ],
         RiskType.HIGH: [
-            r"해지",
-            r"위약금",
-            r"지연손해금",
-            r"면책",
-            r"손해배상",
-            r"원상복구",
-            r"임차인\s*부담",
-            r"보증금\s*공제",
+            r"\uC190\uD574",
+            r"\uACC4\uC57D\uAE08",
+            r"\uC9C0\uC5F0\uC190\uD574\uAE08",
+            r"\uC704\uC57D\uAE08",
+            r"\uC190\uD574\uBC30\uC0C1",
+            r"\uC6D0\uC0C1\uBCF5\uAD6C",
+            r"\uC5F0\uCCB4\s*\uBD80\uB2F4",
+            r"\uBCF4\uC99D\uAE08\s*\uACF5\uC81C",
         ],
         RiskType.MEDIUM: [
-            r"협의",
-            r"통보",
-            r"기한",
-            r"수리",
-            r"관리비",
+            r"\uD1B5\uC9C0",
+            r"\uC2E0\uACE0",
+            r"\uAE30\uD55C",
+            r"\uC218\uB9AC",
+            r"\uAD00\uB9AC\uBE44",
         ],
     }
 
     def __init__(self, model: Optional[str] = None) -> None:
-        self.model = model or os.getenv("OPENAI_RISK_MODEL") or "gpt-5.2"
-        self.api_key = os.getenv("OPENAI_API_KEY") or "api필요"
+        self.model = model or os.getenv("OPENAI_RISK_MODEL") or "o4-mini"
+        self.api_key = os.getenv("OPENAI_API_KEY") or "\uC544\uD53C\uD544\uC694"
         self.temperature = float(os.getenv("RISK_ASSESSOR_TEMPERATURE", "0"))
         self.votes = max(1, int(os.getenv("RISK_ASSESSOR_VOTES", "2")))
-        self._client = self._build_client() if self.api_key != "api필요" else None
+        self._client = self._build_client() if self.api_key != "\uC544\uD53C\uD544\uC694" else None
 
     def _build_client(self):
         try:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError(
-                "openai 패키지가 없습니다. `pip install openai`로 설치하세요."
+                "openai \uD328\uD0A4\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. `pip install openai`\uB85C \uC124\uCE58\uD558\uC138\uC694."
             ) from exc
         return OpenAI(api_key=self.api_key)
 
     def assess_clause(self, clause: Clause) -> Tuple[Optional[RiskType], str]:
-        if self.api_key == "api필요":
-            return None, "api필요"
+        if self.api_key == "\uC544\uD53C\uD544\uC694":
+            return None, "\uC544\uD53C\uD544\uC694"
         if self.votes == 1:
             return self._assess_once(clause)
         return self._assess_with_votes(clause)
 
     def _assess_once(self, clause: Clause) -> Tuple[Optional[RiskType], str]:
-        if self.api_key == "api필요":
-            return None, "api필요"
+        if self.api_key == "\uC544\uD53C\uD544\uC694":
+            return None, "\uC544\uD53C\uD544\uC694"
 
         clause_title = (clause.title or "").strip()
         clause_body = (clause.content or "").strip()
@@ -97,12 +95,16 @@ class RiskAssessor:
             f"Clause:\n{clause_text}"
         )
 
-        response = self._client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=self.temperature,
-        )
+        request_kwargs = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if self.model != "o4-mini":
+            request_kwargs["temperature"] = self.temperature
+
+        response = self._client.chat.completions.create(**request_kwargs)
         content = response.choices[0].message.content or ""
+        self._log_usage("risk_assessor", prompt, content)
 
         payload = self._parse_json_payload(content)
         llm_risk: Optional[RiskType] = None
@@ -125,12 +127,12 @@ class RiskAssessor:
 
         risks = [risk for risk, _ in decisions if risk is not None]
         if not risks:
-            return decisions[0] if decisions else (None, "위험도 판단 근거가 충분하지 않아 추가 확인이 필요합니다.")
+            return decisions[0] if decisions else (None, "\uC704\uD5D8 \uD310\uB2E8 \uADFC\uAC70\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. \uCD94\uAC00 \uD655\uC778\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.")
 
         counts = Counter(risks)
         top_count = max(counts.values())
         candidates = [risk for risk, count in counts.items() if count == top_count]
-        # 동률이면 보수적으로 상위 위험도를 선택
+        # \ub3d9\ub960\uc774\uba74 \ubcf4\uc218\uc801\uc73c\ub85c \uc0c1\uc704 \uc704\ud5d8\ub3c4\ub97c \uc120\ud0dd
         chosen_risk = max(candidates, key=self._risk_rank)
 
         for risk, rationale in decisions:
@@ -201,7 +203,7 @@ class RiskAssessor:
             return heuristic_risk
         if heuristic_risk is None:
             return llm_risk
-        # 명백한 고위험 키워드가 있으면 과소평가를 방지하기 위해 상향 보정
+        # \ub192\uc740 \uc704\ud5d8 \ud0a4\uc6cc\ub4dc\uac00 \uc788\uc73c\uba74 \ubcf4\uc218\uc801\uc73c\ub85c \uc0c1\ud5a5
         if self._risk_rank(heuristic_risk) >= self._risk_rank(RiskType.HIGH):
             if self._risk_rank(heuristic_risk) > self._risk_rank(llm_risk):
                 return heuristic_risk
@@ -228,11 +230,24 @@ class RiskAssessor:
     @staticmethod
     def _fallback_rationale(risk: Optional[RiskType]) -> str:
         if risk == RiskType.CRITICAL:
-            return "조항이 일방적 책임 또는 과도한 손해부담을 포함해 분쟁 및 금전 손실 위험이 큽니다."
+            return "\uc870\ud56d\uc774 \uc77c\ubc29 \ub2f9\uc0ac\uc790\uc5d0\uac8c \uacfc\ub3c4\ud55c \ucc45\uc784 \ub610\ub294 \uc911\ub300\ud55c \ubd88\uc774\uc775\uc744 \ubd80\uac00\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4."
         if risk == RiskType.HIGH:
-            return "조항의 부담 배분이 불균형해 분쟁 가능성과 손실 위험이 높습니다."
+            return "\uc870\ud56d\uc774 \ubd88\ub9ac\ud558\uac8c \ud574\uc11d\ub420 \uc5ec\uc9c0\uac00 \uc788\uc5b4 \ubd84\uc7c1 \ub610\ub294 \uc190\uc2e4 \uc704\ud5d8\uc774 \ud06c\uc2b5\ub2c8\ub2e4."
         if risk == RiskType.MEDIUM:
-            return "조항 문구가 다소 모호해 해석 차이에 따른 분쟁 가능성이 있습니다."
+            return "\uc870\ud56d \ubb38\uad6c\uac00 \ubaa8\ud638\ud558\uc5ec \ud574\uc11d \ucc28\uc774\ub85c \ubd84\uc7c1\uc774 \uc0dd\uae38 \uc218 \uc788\uc2b5\ub2c8\ub2e4."
         if risk == RiskType.LOW:
-            return "일반적인 범위의 조항으로 보이나 적용 조건은 확인이 필요합니다."
-        return "위험도 판단 근거가 충분하지 않아 추가 확인이 필요합니다."
+            return "\uc77c\ubc18\uc801\uc778 \ubc94\uc704\uc758 \uc870\ud56d\uc73c\ub85c \ubcf4\uc774\ub098 \uc801\uc6a9 \uc870\uac74\uc744 \ud655\uc778\ud558\uc138\uc694."
+        return "\uc704\ud5d8 \ud310\ub2e8 \uadfc\uac70\uac00 \ubd80\uc871\ud569\ub2c8\ub2e4. \ucd94\uac00 \ud655\uc778\uc774 \ud544\uc694\ud569\ub2c8\ub2e4."
+
+    @staticmethod
+    def _log_usage(label: str, prompt: str, output: str) -> None:
+        if os.getenv("LOG_LLM_TOKENS", "false").lower() not in ("1", "true", "yes", "y"):
+            return
+        input_chars = len(prompt or "")
+        output_chars = len(output or "")
+        approx_tokens = (input_chars + output_chars) // 4
+        print(
+            "[LLM TOKENS approx] "
+            f"label={label} model=o4-mini input_chars={input_chars} "
+            f"output_chars={output_chars} approx_tokens={approx_tokens}"
+        )

@@ -92,7 +92,7 @@ class TextProcessor:
             f"{text}"
         )
         try:
-            content = chat_completion(prompt=prompt, model="gpt-5.2")
+            content = chat_completion(prompt=prompt, model="o4-mini")
             payload = json.loads(content)
             clauses: List[Clause] = []
             for idx, item in enumerate(payload, start=1):

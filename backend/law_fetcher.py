@@ -31,7 +31,7 @@ class LawFetcher:
         )
         target_env = os.getenv("LAW_TARGETS") or "law,admrul,ordin"
         self.targets = targets or [t.strip() for t in target_env.split(",") if t.strip()]
-        self.detail_limit = int(os.getenv("LAW_DETAIL_LIMIT") or "10")
+        self.detail_limit = int(os.getenv("LAW_DETAIL_LIMIT") or "5")
         self.max_text_chars = int(os.getenv("LAW_DETAIL_TEXT_LIMIT") or "4000")
         self.prefer_db = os.getenv("LAW_PREFER_DB", "true").lower() in (
             "1",
@@ -39,17 +39,17 @@ class LawFetcher:
             "yes",
             "y",
         )
-        self.db_limit = int(os.getenv("LAW_DB_LIMIT") or "20")
+        self.db_limit = int(os.getenv("LAW_DB_LIMIT") or "10")
         self.page_size = int(os.getenv("LAW_PAGE_SIZE") or "20")
         self.max_pages = int(os.getenv("LAW_MAX_PAGES") or "5")
 
     def fetch_laws(self, keyword: str, targets: Optional[List[str]] = None) -> List[Law] | str:
-        db_only = os.getenv("LAW_DB_ONLY", "true").lower() in (
-            "1",
-            "true",
-            "yes",
-            "y",
-        )
+        db_only = os.getenv("LAW_DB_ONLY", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+    )
         if db_only:
             return search_laws(keyword, limit=self.db_limit) or []
         include_terms = self._get_include_terms()
@@ -130,29 +130,30 @@ class LawFetcher:
 
     def _build_law_from_item(self, target: str, item: dict) -> Law:
         if target == "law":
-            doc_id = self._get_first(item, ["법령ID", "법령일련번호", "ID", "MST"])
-            title = self._get_first(item, ["법령명한글", "법령명", "법령명약칭", "법령약칭명"])
-            date = self._get_first(item, ["시행일자", "공포일자"])
-            org = self._get_first(item, ["소관부처명", "소관부처"])
-            url = self._get_first(item, ["법령상세링크", "법령링크", "법령상세"])
+            doc_id = self._get_first(item, ["??ID", "??????", "ID", "MST"])
+            title = self._get_first(item, ["?????", "???", "?????", "????"])
+            date = self._get_first(item, ["????", "????"])
+            org = self._get_first(item, ["?????", "????"])
+            url = self._get_first(item, ["??????", "????", "????"])
         elif target == "admrul":
-            doc_id = self._get_first(item, ["행정규칙ID", "행정규칙일련번호", "ID", "MST"])
-            title = self._get_first(item, ["행정규칙명", "규칙명"])
-            date = self._get_first(item, ["발령일자", "시행일자", "공포일자"])
-            org = self._get_first(item, ["소관부처명", "발령기관명", "소관부처"])
-            url = self._get_first(item, ["행정규칙상세링크", "행정규칙링크", "행정규칙상세"])
+            doc_id = self._get_first(item, ["????ID", "????????", "ID", "MST"])
+            title = self._get_first(item, ["?????", "???"])
+            date = self._get_first(item, ["????", "????", "????"])
+            org = self._get_first(item, ["?????", "?????", "????"])
+            url = self._get_first(item, ["????????", "??????", "??????"])
         else:
-            doc_id = self._get_first(item, ["자치법규ID", "자치법규일련번호", "ID", "MST"])
-            title = self._get_first(item, ["자치법규명", "자치규칙명", "규칙명"])
-            date = self._get_first(item, ["시행일자", "공포일자", "발령일자"])
-            org = self._get_first(item, ["지방자치단체명", "자치단체명", "소관부처명"])
-            url = self._get_first(item, ["자치법규상세링크", "자치법규링크", "자치법규상세"])
+            doc_id = self._get_first(item, ["????ID", "????????", "ID", "MST"])
+            title = self._get_first(item, ["?????", "?????", "???"])
+            date = self._get_first(item, ["????", "????", "????"])
+            org = self._get_first(item, ["???????", "?????", "?????"])
+            url = self._get_first(item, ["????????", "??????", "??????"])
 
         return Law(
+
             doc_id=str(doc_id or ""),
             doc_type=target,
             title=str(title or ""),
-            summary=str(item.get("제개정구분명", "") or ""),
+            summary=str(item.get("??????", "") or ""),
             content="",
             date=str(date or ""),
             org=str(org or ""),
@@ -228,15 +229,15 @@ class LawFetcher:
             if isinstance(obj, dict):
                 for key, value in obj.items():
                     if key in {
-                        "조문내용",
-                        "내용",
-                        "본문",
-                        "조문제목",
-                        "법령명",
-                        "법령명한글",
-                        "행정규칙명",
-                        "자치법규명",
-                        "규칙명",
+                        "????",
+                        "??",
+                        "??",
+                        "????",
+                        "???",
+                        "?????",
+                        "?????",
+                        "?????",
+                        "???",
                     } and isinstance(value, str):
                         texts.append(value)
                     else:
@@ -259,7 +260,9 @@ class LawFetcher:
 
     @staticmethod
     def _get_must_title_terms() -> List[str]:
-        raw = os.getenv("LAW_TITLE_MUST_KEYWORDS") or ""
+        raw = os.getenv("LAW_TITLE_MUST_KEYWORDS")
+        if raw is None or not raw.strip():
+            raw = "????????,??????????,??,???"
         return [term.strip() for term in raw.split(",") if term.strip()]
 
     @staticmethod

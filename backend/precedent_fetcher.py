@@ -16,24 +16,24 @@ class PrecedentFetcher:
     def __init__(self, api_url: str | None = None, api_key: str | None = None) -> None:
         self.api_url = api_url or os.getenv("PRECEDENT_API_URL") or ""
         self.api_key = api_key or os.getenv("PRECEDENT_API_KEY") or "api필요"
-        self.detail_limit = int(os.getenv("PRECEDENT_DETAIL_LIMIT") or "10")
+        self.detail_limit = int(os.getenv("PRECEDENT_DETAIL_LIMIT") or "5")
         self.prefer_db = os.getenv("PRECEDENT_PREFER_DB", "true").lower() in (
             "1",
             "true",
             "yes",
             "y",
         )
-        self.db_limit = int(os.getenv("PRECEDENT_DB_LIMIT") or "20")
+        self.db_limit = int(os.getenv("PRECEDENT_DB_LIMIT") or "10")
         self.page_size = int(os.getenv("PRECEDENT_PAGE_SIZE") or "20")
         self.max_pages = int(os.getenv("PRECEDENT_MAX_PAGES") or "5")
 
     def fetch_precedents(self, keyword: str) -> List[Precedent] | str:
-        db_only = os.getenv("PRECEDENT_DB_ONLY", "true").lower() in (
-            "1",
-            "true",
-            "yes",
-            "y",
-        )
+        db_only = os.getenv("PRECEDENT_DB_ONLY", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+    )
         if db_only:
             return search_precedents(keyword, limit=self.db_limit) or []
         if self.prefer_db:

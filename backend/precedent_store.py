@@ -13,8 +13,8 @@ except Exception:
 
 
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "contract-rag")
-PINECONE_NAMESPACE = os.getenv("PINECONE_NAMESPACE_PRECEDENT", "precedents")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "law-db")
+PINECONE_NAMESPACE = os.getenv("PINECONE_NAMESPACE_PRECEDENT", "precedent_chunks")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
@@ -115,6 +115,23 @@ def _search_tokens(text: str) -> List[str]:
 
 def _to_precedent(match) -> Precedent:
     metadata = getattr(match, "metadata", None) or {}
+    if metadata.get("doc_type") == "precedent_chunk":
+        source_id = str(metadata.get("source_id", "") or "")
+        case_id = source_id.replace("prec:", "").strip() if source_id else ""
+        title = str(metadata.get("title", "") or "")
+        chunk_text = str(metadata.get("chunk_text", "") or "")
+        item = Precedent(
+            case_id=case_id,
+            court="",
+            date="",
+            case_name=title,
+            summary=chunk_text,
+            key_paragraph=chunk_text,
+        )
+        score = getattr(match, "score", None)
+        if score is not None:
+            item.similarity_score = float(score)
+        return item
     item = Precedent(
         case_id=str(metadata.get("case_id", "")),
         court=str(metadata.get("court", "")),
@@ -259,7 +276,53 @@ def search_precedents(keyword: str, limit: int = 20) -> List[Precedent]:
         return []
 
     matches = _query_by_vector(query_embedding, limit=limit)
-    return [_to_precedent(match) for match in matches]
+    items = [_to_precedent(match) for match in matches]
+    must_keywords = [
+        term.strip()
+        for term in (
+            os.getenv("PRECEDENT_MUST_KEYWORDS")
+            or "임대차,전세,월세,보증금,임차,차임,보증금반환,차임연체,임차권,전입,임차인,임대인"
+        ).split(",")
+        if term.strip()
+    ]
+    exclude_keywords = [
+        term.strip()
+        for term in (
+            os.getenv("PRECEDENT_EXCLUDE_KEYWORDS")
+            or "종합부동산세,양도소득세,취득세,농지,조합원입주권,분양권,조세,세법,부가가치세,법인세,종합소득세,선박,해상"
+        ).split(",")
+        if term.strip()
+    ]
+    if not must_keywords:
+        return items
+    filtered: List[Precedent] = []
+    for item in items:
+        text = " ".join(
+            [
+                item.case_name or "",
+                item.summary or "",
+                item.key_paragraph or "",
+            ]
+        )
+        if exclude_keywords and any(k in text for k in exclude_keywords):
+            continue
+        if any(k in text for k in must_keywords):
+            filtered.append(item)
+    # Deduplicate by normalized case_name (fallback to case_id)
+    seen = set()
+    deduped: List[Precedent] = []
+    for item in filtered:
+        key = (item.case_name or "").strip()
+        if not key:
+            key = (item.case_id or "").strip()
+        if not key:
+            continue
+        norm = " ".join(key.split())
+        if norm in seen:
+            continue
+        seen.add(norm)
+        deduped.append(item)
+    return deduped
 
 
 def search_precedents_by_vector(embedding: List[float], limit: int = 5) -> List[Precedent]:

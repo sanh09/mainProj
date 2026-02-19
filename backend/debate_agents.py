@@ -50,14 +50,14 @@ MEDIATOR_SYSTEM_PROMPT = (
 
 class DebateAgents:
     def __init__(self, model: str | None = None) -> None:
-        self.model = model or os.getenv("OPENAI_DEBATE_MODEL") or "gpt-5.2"
+        self.model = model or os.getenv("OPENAI_DEBATE_MODEL") or "o4-mini"
 
     def run(
         self,
         clauses: List[Clause],
         raw_text: Optional[str] = None,
         rounds: int = 0,
-        max_rounds: int = 3,
+        max_rounds: int = 1,
         contract_type: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         if not os.getenv("OPENAI_API_KEY"):
@@ -129,7 +129,7 @@ class DebateAgents:
             "Address or refute the other side and propose concrete revisions. "
             "Your response must include 2-3 distinct points that the other side would disagree with. "
             "Do NOT repeat or paraphrase the other side's points. "
-            "Keep it to 4-6 sentences. "
+            "Keep it to 3-4 sentences. "
             "If precedents or laws are provided, you MUST cite at least one precedent and one law when available. "
             "If only one type is provided, cite at least one item from that type. "
             "End with a '근거:' line listing cited items by title (and court/date if available). "
@@ -153,10 +153,28 @@ class DebateAgents:
             "Analyze the debate and return the JSON only. "
             "If precedents or laws are provided, include at least one precedent and one law in common_points when available."
         )
-        return chat_completion(
+        result = chat_completion(
             prompt=prompt,
             model=self.model,
             system_prompt=MEDIATOR_SYSTEM_PROMPT,
+        )
+        if result and result.strip():
+            return result
+        # Fallback: return a brief neutral summary when JSON output is empty.
+        fallback_prompt = (
+            f"Contract type: {contract_type}\n"
+            "Below is a summary of risky clauses in a real estate contract.\n"
+            f"{context}\n\n"
+            "Conversation so far:\n"
+            f"{history}\n\n"
+            "Provide a concise neutral summary in Korean with 3-5 bullets. "
+            "Focus on key disputes, common ground, and recommended clarifications. "
+            "Do NOT return JSON."
+        )
+        return chat_completion(
+            prompt=fallback_prompt,
+            model=self.model,
+            system_prompt="You are a neutral judge summarizing the debate. Respond in Korean.",
         )
 
     @staticmethod
@@ -193,8 +211,8 @@ class DebateAgents:
     def _format_clauses(clauses: List[Clause]) -> str:
         if not clauses:
             return "- 위험 조항이 발견되지 않았습니다."
-        top_k = int(os.getenv("DEBATE_REF_TOP_K", "2"))
-        snippet_len = int(os.getenv("DEBATE_REF_SNIPPET_LEN", "160"))
+        top_k = int(os.getenv("DEBATE_REF_TOP_K", "1"))
+        snippet_len = int(os.getenv("DEBATE_REF_SNIPPET_LEN", "120"))
         lines = []
         for clause in clauses:
             risk_level = clause.risk_level.value if clause.risk_level else "unknown"

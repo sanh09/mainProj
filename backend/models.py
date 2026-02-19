@@ -26,6 +26,7 @@ class Clause:
     risk_reason: Optional[str] = None
     related_precedents: List = field(default_factory=list)
     related_laws: List = field(default_factory=list)
+    ui_payload: Optional[dict] = None
 
 
 @dataclass

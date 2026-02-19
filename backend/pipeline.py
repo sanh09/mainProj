@@ -42,6 +42,20 @@ class ContractAnalysisPipeline:
         self.use_chunk_vector_search = (
             os.getenv("USE_CHUNK_VECTOR_SEARCH", "true").lower() in ("1", "true", "yes", "y")
         )
+        self.embedding_law_max_chars = int(os.getenv("EMBEDDING_MAX_CHARS_LAW", "1200"))
+        self.embedding_law_content_max_chars = int(
+            os.getenv("EMBEDDING_MAX_CHARS_LAW_CONTENT", "800")
+        )
+        self.embedding_precedent_max_chars = int(
+            os.getenv("EMBEDDING_MAX_CHARS_PRECEDENT", "1200")
+        )
+        self.embedding_law_limit = int(os.getenv("LAW_EMBED_LIMIT", "15"))
+        self.embedding_precedent_limit = int(os.getenv("PRECEDENT_EMBED_LIMIT", "15"))
+        self.embedding_clause_max_chars = int(os.getenv("EMBEDDING_MAX_CHARS_CLAUSE", "800"))
+        self.generate_ui_payload = (
+            os.getenv("GENERATE_UI_PAYLOAD", "true").lower() in ("1", "true", "yes", "y")
+        )
+        self.debate_snippet_max_chars = int(os.getenv("DEBATE_SNIPPET_MAX_CHARS", "1200"))
     
     def analyze(self, file_path: str) -> ContractAnalysisResult:
         """
@@ -84,7 +98,12 @@ class ContractAnalysisPipeline:
         # 3단계: 위험 조항 필터링
         print("[3/8] 위험 조항 필터링...")
         step_start = time.perf_counter()
-        risky_clauses = self.risk_assessor.filter_risky_clauses(clauses)
+        skip_llm = os.getenv("SKIP_LLM", "false").lower() in ("1", "true", "yes", "y")
+        if skip_llm:
+            risky_clauses = clauses
+            print("     SKIP_LLM 활성화: 모든 조항을 위험 조항으로 간주")
+        else:
+            risky_clauses = self.risk_assessor.filter_risky_clauses(clauses)
         print(f"     위험 조항 {len(risky_clauses)}개 발견")
         print(f"     위험 조항 필터링 완료 ({time.perf_counter() - step_start:.2f}s)")
         
@@ -103,9 +122,17 @@ class ContractAnalysisPipeline:
             ).split(",")
             if kw.strip()
         ]
+        forced_domain_keywords = [
+            kw.strip()
+            for kw in (
+                os.getenv("LAW_DOMAIN_KEYWORDS_FORCE")
+                or "임대차,전세,월세,보증금,주택임대차,주택임대차보호법"
+            ).split(",")
+            if kw.strip()
+        ]
         for clause in risky_clauses:
             category = self.risk_mapper.map_risk_category(clause, all_precedents)
-            keywords = domain_keywords + [clause.title]
+            keywords = forced_domain_keywords + domain_keywords + [clause.title]
             if category and category != "기타":
                 keywords.extend(self.risk_mapper.get_keywords_for_category(category))
             query = " ".join([kw for kw in keywords if kw])
@@ -144,11 +171,51 @@ class ContractAnalysisPipeline:
         # 5단계: 임베딩 생성 및 유사도 검색
         print("[5/8] 임베딩 생성 및 유사도 검색..")
         step_start = time.perf_counter()
-        self.embedding_manager.attach_embeddings(all_laws, self._format_law_text)
+        total_law_embed_chars = 0
+        total_precedent_embed_chars = 0
+        total_clause_embed_chars = 0
+        self.embedding_manager.attach_embeddings(
+            all_laws,
+            lambda law: self._format_law_text(
+                law,
+                max_chars=self.embedding_law_max_chars,
+                content_max_chars=self.embedding_law_content_max_chars,
+            ),
+            max_items=self.embedding_law_limit,
+        )
+        self.embedding_manager.attach_embeddings(
+            all_precedents,
+            lambda precedent: self._format_precedent_text(
+                precedent,
+                max_chars=self.embedding_precedent_max_chars,
+            ),
+            max_items=self.embedding_precedent_limit,
+        )
+        for law in all_laws[: max(self.embedding_law_limit, 0) or len(all_laws)]:
+            text = self._format_law_text(
+                law,
+                max_chars=self.embedding_law_max_chars,
+                content_max_chars=self.embedding_law_content_max_chars,
+            )
+            if text:
+                total_law_embed_chars += len(text)
+        for precedent in all_precedents[
+            : max(self.embedding_precedent_limit, 0) or len(all_precedents)
+        ]:
+            text = self._format_precedent_text(
+                precedent,
+                max_chars=self.embedding_precedent_max_chars,
+            )
+            if text:
+                total_precedent_embed_chars += len(text)
         for clause in risky_clauses:
-            clause_text = self._format_clause_text([clause]) or (
+            clause_text = self._format_clause_text(
+                [clause], max_chars=self.embedding_clause_max_chars
+            ) or (
                 f"{clause.title or clause.article_num}\n{clause.content}"
             )
+            if clause_text:
+                total_clause_embed_chars += len(clause_text)
             similar_precedents = self.embedding_manager.find_similar_precedents(
                 clause_text, all_precedents
             )
@@ -161,6 +228,16 @@ class ContractAnalysisPipeline:
             )
             similar_laws = self._merge_chunk_laws(clause_text, similar_laws)
             clause.related_laws = similar_laws
+        approx_tokens = (
+            total_law_embed_chars + total_precedent_embed_chars + total_clause_embed_chars
+        ) // 4
+        print(
+            "     임베딩 문자수 합계: "
+            f"laws {total_law_embed_chars}, "
+            f"precedents {total_precedent_embed_chars}, "
+            f"clauses {total_clause_embed_chars}"
+        )
+        print(f"     임베딩 토큰(대략): {approx_tokens} (chars/4 기준)")
         print("     유사도 검색 완료")
         print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")
         
@@ -169,28 +246,66 @@ class ContractAnalysisPipeline:
         step_start = time.perf_counter()
         print("     위험 유형 분류 완료")
         print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
+
         # 7단계: 갑/을 토론 생성
         print("[7/8] 갑/을 토론 생성...")
         step_start = time.perf_counter()
         contract_type = self.debate_agents.detect_contract_type(raw_text)
-        debate_transcript = self.debate_agents.run(
-            risky_clauses,
-            raw_text=raw_text,
-            contract_type=contract_type,
-        )
-        # Align legacy labels with the new judge role name.
-        for turn in debate_transcript:
-            if turn.get("speaker") in ("mediator", "중재자"):
-                turn["speaker"] = "판사"
+        if skip_llm:
+            debate_transcript = [{"speaker": "system", "content": "SKIP_LLM: 토론 생략"}]
+            print("     SKIP_LLM 활성화: 토론 생략")
+        else:
+            debate_transcript = self.debate_agents.run(
+                risky_clauses,
+                raw_text=raw_text,
+                contract_type=contract_type,
+            )
+            # Align legacy labels with the new judge role name.
+            for turn in debate_transcript:
+                if turn.get("speaker") in ("mediator", "중재자"):
+                    turn["speaker"] = "판사"
         print(f"     토론 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+
+        # UI payload 생성 (조항별 P(L1~L4)) - 토론 스니펫 포함
+        if self.generate_ui_payload:
+            print("     UI payload 생성...")
+            debate_snippet = self._format_debate_transcript(debate_transcript or [])
+            if self.debate_snippet_max_chars > 0:
+                debate_snippet = debate_snippet[: self.debate_snippet_max_chars]
+            for clause in risky_clauses:
+                clause_id = clause.id
+                title = clause.title or clause.article_num
+                clause_text = clause.content or ""
+                risk_level = clause.risk_level.value if clause.risk_level else "unknown"
+                risk_reason = clause.risk_reason or ""
+                precedents = self._format_ref_titles(clause.related_precedents, is_precedent=True)
+                laws = self._format_ref_titles(clause.related_laws, is_precedent=False)
+                clause.ui_payload = self.llm_summarizer.generate_clause_ui_payload_v2(
+                    clause_id=clause_id,
+                    title=title,
+                    clause_text=clause_text,
+                    risk_level=risk_level,
+                    risk_reason=risk_reason,
+                    precedents=precedents,
+                    laws=laws,
+                    debate_snippet=debate_snippet,
+                )
 
         # 8단계: LLM 요약 생성
         print("[8/8] LLM 조항 요약 생성...")
         step_start = time.perf_counter()
-        llm_summary = self.llm_summarizer.generate_comprehensive_report(
-            self._format_clause_text(risky_clauses)
-        )
+        if skip_llm:
+            llm_summary = "SKIP_LLM: 요약 생략"
+            print("     SKIP_LLM 활성화: 요약 생략")
+        else:
+            llm_summary = self.llm_summarizer.generate_comprehensive_report(
+                self._format_clause_text(risky_clauses)
+            )
+            if debate_transcript:
+                debate_text = self._format_debate_transcript(debate_transcript)
+                debate_summary = self.llm_summarizer.generate_debate_summary(debate_text)
+                if debate_summary and debate_summary != "api필요":
+                    llm_summary = f"{llm_summary}\n\n## 토론 요약\n{debate_summary}"
         print(f"     요약 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
         
         # 결과 반환
@@ -241,19 +356,79 @@ class ContractAnalysisPipeline:
         print(f"결과 저장: {output_path}")
 
     @staticmethod
-    def _format_law_text(law) -> str:
-        parts = [law.title, law.summary, law.content]
-        return "\n".join([str(p).strip() for p in parts if p and str(p).strip()])
+    def _format_law_text(law, max_chars: int = 0, content_max_chars: int = 0) -> str:
+        title = (law.title or "").strip()
+        summary = (law.summary or "").strip()
+        content = (law.content or "").strip()
+        if content_max_chars > 0:
+            content = ContractAnalysisPipeline._truncate_text(content, content_max_chars)
+
+        parts = [p for p in (title, summary, content) if p]
+        merged = "\n".join(parts).strip()
+        return ContractAnalysisPipeline._truncate_text(merged, max_chars)
 
     @staticmethod
-    def _format_clause_text(clauses: List[Clause]) -> str:
+    def _format_precedent_text(precedent, max_chars: int = 0) -> str:
+        title = (precedent.case_name or precedent.case_id or "").strip()
+        summary = (precedent.summary or "").strip()
+        key_paragraph = (precedent.key_paragraph or "").strip()
+
+        parts = [p for p in (title, summary, key_paragraph) if p]
+        merged = "\n".join(parts).strip()
+        return ContractAnalysisPipeline._truncate_text(merged, max_chars)
+
+    @staticmethod
+    def _format_clause_text(clauses: List[Clause], max_chars: int = 0) -> str:
         if not clauses:
             return ""
         parts = []
         for clause in clauses:
             title = clause.title or clause.article_num
             parts.append(f"{clause.article_num} {title}\n{clause.content}")
-        return "\n\n".join(parts)
+        merged = "\n\n".join(parts).strip()
+        return ContractAnalysisPipeline._truncate_text(merged, max_chars)
+
+    @staticmethod
+    def _truncate_text(text: str, max_chars: int) -> str:
+        if not text or max_chars <= 0:
+            return text
+        return text[:max_chars]
+
+    @staticmethod
+    def _format_debate_transcript(transcript: List[dict]) -> str:
+        if not transcript:
+            return ""
+        lines = []
+        for turn in transcript:
+            speaker = (turn.get("speaker") or "").strip()
+            content = (turn.get("content") or "").strip()
+            if not content:
+                continue
+            if speaker:
+                lines.append(f"{speaker}: {content}")
+            else:
+                lines.append(content)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_ref_titles(items: List, is_precedent: bool) -> List[str]:
+        if not items:
+            return []
+        titles: List[str] = []
+        for item in items[:3]:
+            if is_precedent:
+                title = getattr(item, "case_name", "") or getattr(item, "case_id", "") or "판례"
+                meta = " ".join(
+                    [str(getattr(item, "court", "") or ""), str(getattr(item, "date", "") or "")]
+                ).strip()
+            else:
+                title = getattr(item, "title", "") or getattr(item, "doc_id", "") or "법령"
+                meta = str(getattr(item, "date", "") or "").strip()
+            if meta:
+                titles.append(f"{title} ({meta})")
+            else:
+                titles.append(title)
+        return titles
 
     def _merge_chunk_precedents(
         self, text: str, base: List[Precedent] | str
