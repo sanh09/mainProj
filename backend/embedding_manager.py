@@ -10,6 +10,7 @@ except ImportError as exc:
     ) from exc
 
 from models import Precedent, Law
+from api_call_counter import ApiCallCounter
 
 
 class EmbeddingManager:
@@ -17,6 +18,7 @@ class EmbeddingManager:
         self.model = model or os.getenv("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-small"
         self.api_key = os.getenv("OPENAI_API_KEY") or "api필요"
         self._client = OpenAI(api_key=self.api_key) if self.api_key != "api필요" else None
+        self._cache: dict[str, List[float]] = {}
         self.use_db_vector_search = os.getenv("USE_DB_VECTOR_SEARCH", "false").lower() in (
             "1",
             "true",
@@ -27,8 +29,47 @@ class EmbeddingManager:
     def generate_embedding(self, text: str) -> List[float] | str:
         if self.api_key == "api필요":
             return "api필요"
-        response = self._client.embeddings.create(model=self.model, input=text)
-        return response.data[0].embedding
+        normalized = (text or "").strip()
+        if not normalized:
+            return []
+        cached = self._cache.get(normalized)
+        if cached is not None:
+            return cached
+        ApiCallCounter.record_current("openai_embedding")
+        response = self._client.embeddings.create(model=self.model, input=normalized)
+        embedding = response.data[0].embedding
+        self._cache[normalized] = embedding
+        return embedding
+
+    def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]] | str:
+        if self.api_key == "api필요":
+            return "api필요"
+        if not texts:
+            return []
+        normalized_texts = [(text or "").strip() for text in texts]
+        results: List[List[float]] = []
+        uncached_texts: List[str] = []
+        uncached_indices: List[int] = []
+        for idx, normalized in enumerate(normalized_texts):
+            if not normalized:
+                results.append([])
+                continue
+            cached = self._cache.get(normalized)
+            if cached is not None:
+                results.append(cached)
+                continue
+            results.append([])
+            uncached_texts.append(normalized)
+            uncached_indices.append(idx)
+        if uncached_texts:
+            ApiCallCounter.record_current("openai_embedding")
+            response = self._client.embeddings.create(model=self.model, input=uncached_texts)
+            embeddings = [item.embedding for item in response.data]
+            for idx, embedding in zip(uncached_indices, embeddings):
+                key = normalized_texts[idx]
+                self._cache[key] = embedding
+                results[idx] = embedding
+        return results
 
     def calculate_similarity(self, vector_a: List[float], vector_b: List[float]) -> float:
         if not vector_a or not vector_b or len(vector_a) != len(vector_b):
@@ -49,6 +90,16 @@ class EmbeddingManager:
         self, target_text: str, laws: List[Law], top_k: int = 3
     ) -> List[Law] | str:
         return self._find_similar_items(target_text, laws, top_k)
+
+    def find_similar_precedents_with_embedding(
+        self, target_embedding: List[float] | str, precedents: List[Precedent], top_k: int = 3
+    ) -> List[Precedent] | str:
+        return self._find_similar_items_with_embedding(target_embedding, precedents, top_k)
+
+    def find_similar_laws_with_embedding(
+        self, target_embedding: List[float] | str, laws: List[Law], top_k: int = 3
+    ) -> List[Law] | str:
+        return self._find_similar_items_with_embedding(target_embedding, laws, top_k)
 
     def find_similar_precedents_db(self, target_text: str, top_k: int = 3) -> List[Precedent] | str:
         from precedent_store import search_precedents_by_vector
@@ -72,19 +123,31 @@ class EmbeddingManager:
         if self.api_key == "api필요":
             return "api필요"
         limit = max_items if max_items is not None else len(items)
+        batch_items: List[object] = []
+        batch_texts: List[str] = []
         for item in items[:limit]:
             text = text_getter(item)
             if not text:
                 continue
-            embedding = self.generate_embedding(text)
-            if embedding == "api필요":
-                return "api필요"
+            batch_items.append(item)
+            batch_texts.append(text)
+        if not batch_texts:
+            return items
+        embeddings = self.generate_embeddings_batch(batch_texts)
+        if embeddings == "api필요":
+            return "api필요"
+        for item, embedding in zip(batch_items, embeddings):
             setattr(item, "embedding", embedding)
             setattr(item, "embedding_model", self.model)
         return items
 
     def _find_similar_items(self, target_text: str, items: List[object], top_k: int):
         target_embedding = self.generate_embedding(target_text)
+        return self._find_similar_items_with_embedding(target_embedding, items, top_k)
+
+    def _find_similar_items_with_embedding(
+        self, target_embedding: List[float] | str, items: List[object], top_k: int
+    ):
         if target_embedding == "api필요":
             return "api필요"
         scored: List[tuple[float, object]] = []

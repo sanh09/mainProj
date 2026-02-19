@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Tuple
 
 from models import Clause, RiskType
+from api_call_counter import ApiCallCounter
 
 
 class RiskAssessor:
@@ -56,6 +57,14 @@ class RiskAssessor:
         self.api_key = os.getenv("OPENAI_API_KEY") or "\uC544\uD53C\uD544\uC694"
         self.temperature = float(os.getenv("RISK_ASSESSOR_TEMPERATURE", "0"))
         self.votes = max(1, int(os.getenv("RISK_ASSESSOR_VOTES", "2")))
+        self.max_input_chars = int(os.getenv("RISK_INPUT_MAX_CHARS", "0"))
+        if self.max_input_chars <= 0 and os.getenv("SLIM_INPUTS", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+            "y",
+        ):
+            self.max_input_chars = 800
         self._client = self._build_client() if self.api_key != "\uC544\uD53C\uD544\uC694" else None
 
     def _build_client(self):
@@ -73,6 +82,62 @@ class RiskAssessor:
         if self.votes == 1:
             return self._assess_once(clause)
         return self._assess_with_votes(clause)
+
+    def _assess_batch(
+        self, clauses: list[Clause], batch_size: int, votes: int
+    ) -> list[Tuple[Optional[RiskType], str]]:
+        if self.api_key == "\uC544\uD53C\uD544\uC694":
+            return [(None, "\uC544\uD53C\uD544\uC694") for _ in clauses]
+        if not clauses:
+            return []
+
+        def _build_prompt(batch: list[Clause]) -> str:
+            items = []
+            for idx, clause in enumerate(batch, start=1):
+                clause_title = (clause.title or "").strip()
+                clause_body = (clause.content or "").strip()
+                clause_text = f"{clause_title}\n{clause_body}".strip()
+                items.append(f"{idx}. {clause_text}")
+            joined = "\n\n".join(items)
+            return (
+                "You are a legal risk assistant for Korean real-estate contracts.\n"
+                "Assess each clause using this rubric:\n"
+                "- critical: severe unilateral burden, unlimited liability, deposit forfeiture, immediate enforcement\n"
+                "- high: strong one-sided terms likely to cause dispute/loss\n"
+                "- medium: ambiguity or operational burden with moderate dispute risk\n"
+                "- low: generally standard and balanced wording\n"
+                "Return JSON array only. Each item must include:\n"
+                "{\"id\":number,\"risk\":\"low|medium|high|critical\",\"rationale\":\"Korean, <=120 chars\"}\n"
+                "Do not include markdown code fences.\n"
+                f"Clauses:\n{joined}"
+            )
+
+        def _call_batch(batch: list[Clause]) -> list[dict]:
+            prompt = _build_prompt(batch)
+            request_kwargs = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            if self.model != "o4-mini":
+                request_kwargs["temperature"] = self.temperature
+            ApiCallCounter.record_current("openai_chat:risk")
+            response = self._client.chat.completions.create(**request_kwargs)
+            content = response.choices[0].message.content or ""
+            self._log_usage("risk_assessor_batch", prompt, content)
+            return self._parse_json_list(content)
+
+        results: list[Tuple[Optional[RiskType], str]] = []
+        for start in range(0, len(clauses), batch_size):
+            batch = clauses[start : start + batch_size]
+            if votes <= 1:
+                payloads = _call_batch(batch)
+                results.extend(self._merge_batch_results(batch, payloads))
+            else:
+                vote_payloads: list[list[dict]] = []
+                for _ in range(votes):
+                    vote_payloads.append(_call_batch(batch))
+                results.extend(self._merge_batch_votes(batch, vote_payloads))
+        return results
 
     def _assess_once(self, clause: Clause) -> Tuple[Optional[RiskType], str]:
         if self.api_key == "\uC544\uD53C\uD544\uC694":
@@ -102,6 +167,7 @@ class RiskAssessor:
         if self.model != "o4-mini":
             request_kwargs["temperature"] = self.temperature
 
+        ApiCallCounter.record_current("openai_chat:risk")
         response = self._client.chat.completions.create(**request_kwargs)
         content = response.choices[0].message.content or ""
         self._log_usage("risk_assessor", prompt, content)
@@ -143,6 +209,15 @@ class RiskAssessor:
     def filter_risky_clauses(self, clauses: list[Clause]) -> list[Clause]:
         risky: list[Clause] = []
         if not clauses:
+            return risky
+        batch_size = int(os.getenv("RISK_BATCH_SIZE", "0"))
+        if batch_size > 0:
+            results = self._assess_batch(clauses, batch_size, self.votes)
+            for clause, (risk, rationale) in zip(clauses, results):
+                clause.risk_level = risk
+                clause.risk_reason = rationale
+                if risk in (RiskType.MEDIUM, RiskType.HIGH, RiskType.CRITICAL):
+                    risky.append(clause)
             return risky
         workers = int(os.getenv("RISK_ASSESSOR_WORKERS", "4"))
         if workers <= 1:
@@ -209,6 +284,13 @@ class RiskAssessor:
                 return heuristic_risk
         return llm_risk
 
+    def _trim_text(self, text: str) -> str:
+        if not text:
+            return text
+        if self.max_input_chars <= 0 or len(text) <= self.max_input_chars:
+            return text
+        return text[: self.max_input_chars]
+
     @staticmethod
     def _parse_json_payload(content: str) -> dict:
         raw = (content or "").strip()
@@ -226,6 +308,89 @@ class RiskAssessor:
                 return parsed if isinstance(parsed, dict) else {}
             except json.JSONDecodeError:
                 return {}
+
+    @staticmethod
+    def _parse_json_list(content: str) -> list[dict]:
+        raw = (content or "").strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [item for item in parsed if isinstance(item, dict)]
+            if isinstance(parsed, dict):
+                items = parsed.get("items")
+                if isinstance(items, list):
+                    return [item for item in items if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            match = re.search(r"\[[\s\S]*\]", raw)
+            if not match:
+                return []
+            try:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, list):
+                    return [item for item in parsed if isinstance(item, dict)]
+            except json.JSONDecodeError:
+                return []
+        return []
+
+    def _merge_batch_results(
+        self, batch: list[Clause], payloads: list[dict]
+    ) -> list[Tuple[Optional[RiskType], str]]:
+        by_id: dict[int, dict] = {}
+        for item in payloads:
+            try:
+                idx = int(item.get("id"))
+            except Exception:
+                continue
+            by_id[idx] = item
+        results: list[Tuple[Optional[RiskType], str]] = []
+        for idx, clause in enumerate(batch, start=1):
+            payload = by_id.get(idx, {})
+            llm_risk = self._map_risk(str(payload.get("risk", "")).strip())
+            rationale = str(payload.get("rationale", "")).strip()
+            clause_text = f"{clause.title or ''}\n{clause.content or ''}".strip()
+            heuristic_risk = self._heuristic_risk(clause_text)
+            final_risk = self._merge_risk(llm_risk, heuristic_risk)
+            if not rationale:
+                rationale = self._fallback_rationale(final_risk)
+            results.append((final_risk, rationale))
+        return results
+
+    def _merge_batch_votes(
+        self, batch: list[Clause], vote_payloads: list[list[dict]]
+    ) -> list[Tuple[Optional[RiskType], str]]:
+        decisions_per_clause: list[list[Tuple[Optional[RiskType], str]]] = [
+            [] for _ in batch
+        ]
+        for payloads in vote_payloads:
+            merged = self._merge_batch_results(batch, payloads)
+            for idx, decision in enumerate(merged):
+                decisions_per_clause[idx].append(decision)
+
+        results: list[Tuple[Optional[RiskType], str]] = []
+        for decisions in decisions_per_clause:
+            risks = [risk for risk, _ in decisions if risk is not None]
+            if not risks:
+                results.append(
+                    decisions[0]
+                    if decisions
+                    else (None, "\uc704\ud5d8 \ud310\ub2e8 \uadfc\uac70\uac00 \ubd80\uc871\ud569\ub2c8\ub2e4. \ucd94\uac00 \ud655\uc778\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.")
+                )
+                continue
+            counts = Counter(risks)
+            top_count = max(counts.values())
+            candidates = [risk for risk, count in counts.items() if count == top_count]
+            chosen_risk = max(candidates, key=self._risk_rank)
+            rationale = ""
+            for risk, r in decisions:
+                if risk == chosen_risk and r.strip():
+                    rationale = r
+                    break
+            if not rationale:
+                rationale = self._fallback_rationale(chosen_risk)
+            results.append((chosen_risk, rationale))
+        return results
 
     @staticmethod
     def _fallback_rationale(risk: Optional[RiskType]) -> str:

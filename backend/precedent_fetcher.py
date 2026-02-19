@@ -10,12 +10,19 @@ except ImportError as exc:
 
 from models import Precedent
 from precedent_store import search_precedents, upsert_precedents
+from api_call_counter import ApiCallCounter
 
 
 class PrecedentFetcher:
-    def __init__(self, api_url: str | None = None, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        embedding_manager: Optional["EmbeddingManager"] = None,
+    ) -> None:
         self.api_url = api_url or os.getenv("PRECEDENT_API_URL") or ""
         self.api_key = api_key or os.getenv("PRECEDENT_API_KEY") or "api필요"
+        self.embedding_manager = embedding_manager
         self.detail_limit = int(os.getenv("PRECEDENT_DETAIL_LIMIT") or "5")
         self.prefer_db = os.getenv("PRECEDENT_PREFER_DB", "true").lower() in (
             "1",
@@ -24,8 +31,8 @@ class PrecedentFetcher:
             "y",
         )
         self.db_limit = int(os.getenv("PRECEDENT_DB_LIMIT") or "10")
-        self.page_size = int(os.getenv("PRECEDENT_PAGE_SIZE") or "20")
-        self.max_pages = int(os.getenv("PRECEDENT_MAX_PAGES") or "5")
+        self.page_size = int(os.getenv("PRECEDENT_PAGE_SIZE") or "10")
+        self.max_pages = int(os.getenv("PRECEDENT_MAX_PAGES") or "2")
 
     def fetch_precedents(self, keyword: str) -> List[Precedent] | str:
         db_only = os.getenv("PRECEDENT_DB_ONLY", "false").lower() in (
@@ -35,9 +42,17 @@ class PrecedentFetcher:
         "y",
     )
         if db_only:
-            return search_precedents(keyword, limit=self.db_limit) or []
+            return search_precedents(
+                keyword,
+                limit=self.db_limit,
+                embedding_manager=self.embedding_manager,
+            ) or []
         if self.prefer_db:
-            cached = search_precedents(keyword, limit=self.db_limit)
+            cached = search_precedents(
+                keyword,
+                limit=self.db_limit,
+                embedding_manager=self.embedding_manager,
+            )
             if cached:
                 return cached
         if self.api_key == "api필요":
@@ -47,6 +62,7 @@ class PrecedentFetcher:
         precedents: List[Precedent] = []
         seen_ids = set()
         for page in range(1, max(self.max_pages, 1) + 1):
+            ApiCallCounter.record_current("lawgokr_precedent_search")
             response = requests.get(
                 self.api_url,
                 params={
@@ -108,6 +124,7 @@ class PrecedentFetcher:
     def _fetch_precedent_detail(self, case_id: str) -> Optional[dict]:
         if not case_id:
             return None
+        ApiCallCounter.record_current("lawgokr_precedent_detail")
         response = requests.get(
             self._detail_base_url(),
             params={"OC": self.api_key, "target": "prec", "type": "JSON", "ID": case_id},

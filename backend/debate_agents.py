@@ -73,6 +73,11 @@ class DebateAgents:
         if not contract_type:
             contract_type = self._detect_contract_type(raw_text or "")
         context = self._format_clauses(clauses)
+        max_context_chars = int(os.getenv("MAX_DEBATE_INPUT_CHARS", "0"))
+        if max_context_chars <= 0 and os.getenv("SLIM_INPUTS", "false").lower() in ("1", "true", "yes", "y"):
+            max_context_chars = 1500
+        if max_context_chars > 0 and len(context) > max_context_chars:
+            context = context[:max_context_chars]
         transcript: List[Dict[str, str]] = []
         # rounds가 주어지면(>0) 그대로 사용하고, 아니면 중재자 기반 루프를 max_rounds까지 수행합니다.
         if rounds and rounds > 0:
@@ -212,13 +217,19 @@ class DebateAgents:
         if not clauses:
             return "- 위험 조항이 발견되지 않았습니다."
         top_k = int(os.getenv("DEBATE_REF_TOP_K", "1"))
+        if os.getenv("SLIM_INPUTS", "false").lower() in ("1", "true", "yes", "y") and top_k > 1:
+            top_k = 1
         snippet_len = int(os.getenv("DEBATE_REF_SNIPPET_LEN", "120"))
+        clause_snippet_len = int(os.getenv("DEBATE_CLAUSE_SNIPPET_LEN", "0"))
+        if clause_snippet_len <= 0 and os.getenv("SLIM_INPUTS", "false").lower() in ("1", "true", "yes", "y"):
+            clause_snippet_len = 120
         lines = []
         for clause in clauses:
             risk_level = clause.risk_level.value if clause.risk_level else "unknown"
             title = clause.title or "제목 없음"
             content = (clause.content or "").strip()
-            snippet = content[:300] + ("..." if len(content) > 300 else "")
+            target_len = clause_snippet_len if clause_snippet_len > 0 else 300
+            snippet = content[:target_len] + ("..." if len(content) > target_len else "")
             lines.append(
                 f"- {clause.article_num} {title} (risk={risk_level}): {snippet}"
             )

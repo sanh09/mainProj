@@ -209,14 +209,14 @@ Phase 3B (모델 티어링) ───────┘── Phase 0 카운터로 
 
 | ID | Phase | Task | 상태 | 파일 |
 |----|-------|------|------|------|
-| #5 | 1A | Embedding quadruplication: same clause text embedded 4x per risky clause | pending | `pipeline.py:219-230,438,455`, `embedding_manager.py` |
-| #6 | 1B | attach_embeddings loops item-by-item instead of using batch API | pending | `embedding_manager.py:69-84` |
-| #7 | 1C | Store search functions create fresh EmbeddingManager and re-embed queries | pending | `precedent_store.py:269-273`, `law_store.py:256-260`, `precedent_fetcher.py`, `law_fetcher.py` |
-| #8 | 2A,2B | law.go.kr over-fetching: 100 results fetched per search, only top-3 used | pending | `precedent_fetcher.py:27-28`, `law_fetcher.py:43-44`, `pipeline.py:133-166` |
-| #9 | 2C | UI payload generation is sequential with no batching | pending | `pipeline.py:275-292` |
-| — | 0 | `ApiCallCounter` 신규 모듈 | pending | `api_call_counter.py` (신규), `pipeline.py`, 각 모듈 |
-| — | 3A | 위험 평가 배치화 (`RISK_BATCH_SIZE`) | pending | `risk_assessor.py` |
-| — | 3B | 모델 티어링 (`OPENAI_REPORT_MODEL`) | pending | `llm_summarizer.py`, `debate_agents.py` |
+| #5 | 1A | Embedding quadruplication: same clause text embedded 4x per risky clause | done | `pipeline.py:219-230,438,455`, `embedding_manager.py` |
+| #6 | 1B | attach_embeddings loops item-by-item instead of using batch API | done | `embedding_manager.py:69-84` |
+| #7 | 1C | Store search functions create fresh EmbeddingManager and re-embed queries | done | `precedent_store.py:269-273`, `law_store.py:256-260`, `precedent_fetcher.py`, `law_fetcher.py` |
+| #8 | 2A,2B | law.go.kr over-fetching: 100 results fetched per search, only top-3 used | done | `precedent_fetcher.py:27-28`, `law_fetcher.py:43-44`, `pipeline.py:133-166` |
+| #9 | 2C | UI payload generation is sequential with no batching | done | `pipeline.py:275-292` |
+| — | 0 | `ApiCallCounter` 신규 모듈 | done | `api_call_counter.py` (신규), `pipeline.py`, 각 모듈 |
+| — | 3A | 위험 평가 배치화 (`RISK_BATCH_SIZE`) | done | `risk_assessor.py` |
+| — | 3B | 모델 티어링 (`OPENAI_REPORT_MODEL`) | done | `llm_summarizer.py` |
 
 ### Gap Audit (resolved)
 

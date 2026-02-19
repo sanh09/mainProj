@@ -259,7 +259,11 @@ def _query_by_vector(vector: List[float], limit: int = 20):
     return []
 
 
-def search_precedents(keyword: str, limit: int = 20) -> List[Precedent]:
+def search_precedents(
+    keyword: str,
+    limit: int = 20,
+    embedding_manager: Optional["EmbeddingManager"] = None,
+) -> List[Precedent]:
     normalized = (keyword or "").strip().lower()
     if not normalized:
         return []
@@ -268,7 +272,7 @@ def search_precedents(keyword: str, limit: int = 20) -> List[Precedent]:
     try:
         from embedding_manager import EmbeddingManager
 
-        manager = EmbeddingManager()
+        manager = embedding_manager or EmbeddingManager()
         query_embedding = manager.generate_embedding(normalized)
         if query_embedding == "api필요":
             return []

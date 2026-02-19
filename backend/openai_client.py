@@ -1,5 +1,7 @@
 import os
 
+from api_call_counter import ApiCallCounter
+
 
 def _get_client():
     try:
@@ -27,6 +29,7 @@ def chat_completion(
     messages.append({"role": "user", "content": prompt})
     if max_tokens is None:
         max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1200"))
+    ApiCallCounter.record_current(f"openai_chat:{model}")
     response = client.chat.completions.create(
         model=model,
         messages=messages,

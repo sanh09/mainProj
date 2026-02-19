@@ -11,6 +11,7 @@ except ImportError as exc:
 
 from models import Law
 from law_store import search_laws, upsert_laws
+from api_call_counter import ApiCallCounter
 
 
 class LawFetcher:
@@ -19,6 +20,7 @@ class LawFetcher:
         api_url: str | None = None,
         api_key: str | None = None,
         targets: Optional[List[str]] = None,
+        embedding_manager: Optional["EmbeddingManager"] = None,
     ) -> None:
         self.api_url = (
             api_url
@@ -29,6 +31,7 @@ class LawFetcher:
         self.api_key = (
             api_key or os.getenv("LAW_API_KEY") or os.getenv("PRECEDENT_API_KEY") or "api필요"
         )
+        self.embedding_manager = embedding_manager
         target_env = os.getenv("LAW_TARGETS") or "law,admrul,ordin"
         self.targets = targets or [t.strip() for t in target_env.split(",") if t.strip()]
         self.detail_limit = int(os.getenv("LAW_DETAIL_LIMIT") or "5")
@@ -40,8 +43,8 @@ class LawFetcher:
             "y",
         )
         self.db_limit = int(os.getenv("LAW_DB_LIMIT") or "10")
-        self.page_size = int(os.getenv("LAW_PAGE_SIZE") or "20")
-        self.max_pages = int(os.getenv("LAW_MAX_PAGES") or "5")
+        self.page_size = int(os.getenv("LAW_PAGE_SIZE") or "10")
+        self.max_pages = int(os.getenv("LAW_MAX_PAGES") or "2")
 
     def fetch_laws(self, keyword: str, targets: Optional[List[str]] = None) -> List[Law] | str:
         db_only = os.getenv("LAW_DB_ONLY", "false").lower() in (
@@ -51,12 +54,20 @@ class LawFetcher:
         "y",
     )
         if db_only:
-            return search_laws(keyword, limit=self.db_limit) or []
+            return search_laws(
+                keyword,
+                limit=self.db_limit,
+                embedding_manager=self.embedding_manager,
+            ) or []
         include_terms = self._get_include_terms()
         must_title_terms = self._get_must_title_terms()
         base_query = self._get_base_query()
         if self.prefer_db:
-            cached = search_laws(keyword, limit=self.db_limit)
+            cached = search_laws(
+                keyword,
+                limit=self.db_limit,
+                embedding_manager=self.embedding_manager,
+            )
             if cached:
                 return cached
                 if db_only:
@@ -94,6 +105,7 @@ class LawFetcher:
         laws: List[Law] = []
         seen_keys = set()
         for page in range(1, max(self.max_pages, 1) + 1):
+            ApiCallCounter.record_current("lawgokr_law_search")
             response = requests.get(
                 self.api_url,
                 params={
@@ -194,6 +206,7 @@ class LawFetcher:
     def _fetch_law_detail(self, target: str, doc_id: str) -> Optional[dict]:
         if not doc_id:
             return None
+        ApiCallCounter.record_current("lawgokr_law_detail")
         response = requests.get(
             self._detail_base_url(),
             params={"OC": self.api_key, "target": target, "type": "JSON", "ID": doc_id},

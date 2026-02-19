@@ -246,7 +246,11 @@ def _query_by_vector(vector: List[float], limit: int = 20):
     return []
 
 
-def search_laws(keyword: str, limit: int = 20) -> List[Law]:
+def search_laws(
+    keyword: str,
+    limit: int = 20,
+    embedding_manager: Optional["EmbeddingManager"] = None,
+) -> List[Law]:
     normalized = (keyword or "").strip().lower()
     if not normalized:
         return []
@@ -255,7 +259,7 @@ def search_laws(keyword: str, limit: int = 20) -> List[Law]:
     try:
         from embedding_manager import EmbeddingManager
 
-        manager = EmbeddingManager()
+        manager = embedding_manager or EmbeddingManager()
         query_embedding = manager.generate_embedding(normalized)
         if query_embedding == "api필요":
             return []

@@ -5,6 +5,7 @@
 import os
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 from dataclasses import asdict
 
@@ -22,6 +23,7 @@ from chunk_store import (
 from risk_mapper import RiskMapper
 from llm_summarizer import LLMSummarizer
 from debate_agents import DebateAgents
+from api_call_counter import ApiCallCounter
 
 
 # ==================== 메인 파이프라인 ====================
@@ -33,9 +35,9 @@ class ContractAnalysisPipeline:
         self.ocr = UpstageDocumentExtractor()
         self.text_processor = TextProcessor()
         self.risk_assessor = RiskAssessor()
-        self.precedent_fetcher = PrecedentFetcher()
-        self.law_fetcher = LawFetcher()
         self.embedding_manager = EmbeddingManager()
+        self.precedent_fetcher = PrecedentFetcher(embedding_manager=self.embedding_manager)
+        self.law_fetcher = LawFetcher(embedding_manager=self.embedding_manager)
         self.risk_mapper = RiskMapper()
         self.llm_summarizer = LLMSummarizer()
         self.debate_agents = DebateAgents()
@@ -55,7 +57,23 @@ class ContractAnalysisPipeline:
         self.generate_ui_payload = (
             os.getenv("GENERATE_UI_PAYLOAD", "true").lower() in ("1", "true", "yes", "y")
         )
+        self.slim_inputs = os.getenv("SLIM_INPUTS", "false").lower() in ("1", "true", "yes", "y")
+        self.max_ui_input_chars = int(os.getenv("MAX_UI_INPUT_CHARS", "0"))
+        if self.slim_inputs and self.max_ui_input_chars <= 0:
+            self.max_ui_input_chars = 900
+        self.max_summary_input_chars = int(os.getenv("MAX_SUMMARY_INPUT_CHARS", "0"))
+        if self.slim_inputs and self.max_summary_input_chars <= 0:
+            self.max_summary_input_chars = 2500
+        self.max_debate_summary_input_chars = int(os.getenv("MAX_DEBATE_SUMMARY_INPUT_CHARS", "0"))
+        if self.slim_inputs and self.max_debate_summary_input_chars <= 0:
+            self.max_debate_summary_input_chars = 2000
+        self.ui_ref_top_k = int(os.getenv("UI_REF_TOP_K", "3"))
+        if self.slim_inputs and self.ui_ref_top_k > 2:
+            self.ui_ref_top_k = 2
+        self.ui_payload_workers = int(os.getenv("UI_PAYLOAD_WORKERS", "4"))
         self.debate_snippet_max_chars = int(os.getenv("DEBATE_SNIPPET_MAX_CHARS", "1200"))
+        if self.slim_inputs and self.debate_snippet_max_chars > 800:
+            self.debate_snippet_max_chars = 800
     
     def analyze(self, file_path: str) -> ContractAnalysisResult:
         """
@@ -78,252 +96,318 @@ class ContractAnalysisPipeline:
             분석 결과
         """
         filename = os.path.basename(file_path)
-        
-        # 1단계: 문서 추출
-        print(f"[1/8] 문서 추출 진행 중.. ({filename})")
-        step_start = time.perf_counter()
-        ocr_result = self.ocr.extract_text_from_file(file_path)
-        raw_text = get_extracted_text(ocr_result)
-        source_document = ocr_result if isinstance(ocr_result, dict) else None
-        print(f"     문서 추출 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
-        # 2단계: 텍스트 정제 및 조항 분리
-        print("[2/8] 텍스트 정제 및 조항 분리...")
-        step_start = time.perf_counter()
-        clean_text = self.text_processor.clean_text(raw_text)
-        clauses = self.text_processor.split_clauses_with_fallback(clean_text)
-        print(f"     총 {len(clauses)}개 조항 추출")
-        print(f"     텍스트 정제/분리 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
-        # 3단계: 위험 조항 필터링
-        print("[3/8] 위험 조항 필터링...")
-        step_start = time.perf_counter()
-        skip_llm = os.getenv("SKIP_LLM", "false").lower() in ("1", "true", "yes", "y")
-        if skip_llm:
-            risky_clauses = clauses
-            print("     SKIP_LLM 활성화: 모든 조항을 위험 조항으로 간주")
-        else:
-            risky_clauses = self.risk_assessor.filter_risky_clauses(clauses)
-        print(f"     위험 조항 {len(risky_clauses)}개 발견")
-        print(f"     위험 조항 필터링 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
-        # 4단계: 판례 데이터 수집
-        print("[4/8] 공공 판례 API 호출...")
-        step_start = time.perf_counter()
-        all_precedents = []
-        all_laws = []
-        min_precedent_results = int(os.getenv("PRECEDENT_MIN_RESULTS") or "3")
-        min_law_results = int(os.getenv("LAW_MIN_RESULTS") or "3")
-        domain_keywords = [
-            kw.strip()
-            for kw in (
-                os.getenv("LAW_DOMAIN_KEYWORDS")
-                or "부동산,임대차,임대,임차,주택,전세,월세,보증금"
-            ).split(",")
-            if kw.strip()
-        ]
-        forced_domain_keywords = [
-            kw.strip()
-            for kw in (
-                os.getenv("LAW_DOMAIN_KEYWORDS_FORCE")
-                or "임대차,전세,월세,보증금,주택임대차,주택임대차보호법"
-            ).split(",")
-            if kw.strip()
-        ]
-        for clause in risky_clauses:
-            category = self.risk_mapper.map_risk_category(clause, all_precedents)
-            keywords = forced_domain_keywords + domain_keywords + [clause.title]
-            if category and category != "기타":
-                keywords.extend(self.risk_mapper.get_keywords_for_category(category))
-            query = " ".join([kw for kw in keywords if kw])
-            precedents = self.precedent_fetcher.fetch_precedents(query)
-            if isinstance(precedents, str):
-                precedents = []
-            if len(precedents) < min_precedent_results and clause.title:
-                fallback = self.precedent_fetcher.fetch_precedents(clause.title)
-                if isinstance(fallback, str):
-                    fallback = []
-                # merge by case_id to avoid duplicates
-                seen = {p.case_id for p in precedents}
-                for p in fallback:
-                    if p.case_id and p.case_id not in seen:
-                        precedents.append(p)
-                        seen.add(p.case_id)
-            all_precedents.extend(precedents)
-            laws = self.law_fetcher.fetch_laws(query)
-            if isinstance(laws, str):
-                laws = []
-            if len(laws) < min_law_results and clause.title:
-                fallback = self.law_fetcher.fetch_laws(clause.title)
-                if isinstance(fallback, str):
-                    fallback = []
-                seen = {(l.doc_type, l.doc_id) for l in laws}
-                for law in fallback:
-                    key = (law.doc_type, law.doc_id)
-                    if law.doc_id and key not in seen:
-                        laws.append(law)
-                        seen.add(key)
-            all_laws.extend(laws)
-        all_laws = self.law_fetcher._dedupe_laws(all_laws)
-        print(f"     precedents {len(all_precedents)}, laws {len(all_laws)} collected")
-        print(f"     판례/법령 수집 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
-        # 5단계: 임베딩 생성 및 유사도 검색
-        print("[5/8] 임베딩 생성 및 유사도 검색..")
-        step_start = time.perf_counter()
-        total_law_embed_chars = 0
-        total_precedent_embed_chars = 0
-        total_clause_embed_chars = 0
-        self.embedding_manager.attach_embeddings(
-            all_laws,
-            lambda law: self._format_law_text(
-                law,
-                max_chars=self.embedding_law_max_chars,
-                content_max_chars=self.embedding_law_content_max_chars,
-            ),
-            max_items=self.embedding_law_limit,
-        )
-        self.embedding_manager.attach_embeddings(
-            all_precedents,
-            lambda precedent: self._format_precedent_text(
-                precedent,
-                max_chars=self.embedding_precedent_max_chars,
-            ),
-            max_items=self.embedding_precedent_limit,
-        )
-        for law in all_laws[: max(self.embedding_law_limit, 0) or len(all_laws)]:
-            text = self._format_law_text(
-                law,
-                max_chars=self.embedding_law_max_chars,
-                content_max_chars=self.embedding_law_content_max_chars,
-            )
-            if text:
-                total_law_embed_chars += len(text)
-        for precedent in all_precedents[
-            : max(self.embedding_precedent_limit, 0) or len(all_precedents)
-        ]:
-            text = self._format_precedent_text(
-                precedent,
-                max_chars=self.embedding_precedent_max_chars,
-            )
-            if text:
-                total_precedent_embed_chars += len(text)
-        for clause in risky_clauses:
-            clause_text = self._format_clause_text(
-                [clause], max_chars=self.embedding_clause_max_chars
-            ) or (
-                f"{clause.title or clause.article_num}\n{clause.content}"
-            )
-            if clause_text:
-                total_clause_embed_chars += len(clause_text)
-            similar_precedents = self.embedding_manager.find_similar_precedents(
-                clause_text, all_precedents
-            )
-            similar_precedents = self._merge_chunk_precedents(
-                clause_text, similar_precedents
-            )
-            clause.related_precedents = similar_precedents
-            similar_laws = self.embedding_manager.find_similar_laws(
-                clause_text, all_laws
-            )
-            similar_laws = self._merge_chunk_laws(clause_text, similar_laws)
-            clause.related_laws = similar_laws
-        approx_tokens = (
-            total_law_embed_chars + total_precedent_embed_chars + total_clause_embed_chars
-        ) // 4
-        print(
-            "     임베딩 문자수 합계: "
-            f"laws {total_law_embed_chars}, "
-            f"precedents {total_precedent_embed_chars}, "
-            f"clauses {total_clause_embed_chars}"
-        )
-        print(f"     임베딩 토큰(대략): {approx_tokens} (chars/4 기준)")
-        print("     유사도 검색 완료")
-        print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
-        # 6단계: 위험 유형 매핑 (카테고리 계산은 4단계 쿼리 생성에 이미 활용)
-        print("[6/8] 위험 유형 매핑...")
-        step_start = time.perf_counter()
-        print("     위험 유형 분류 완료")
-        print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
+        with ApiCallCounter.track() as api_counter:
+            summary_printed = False
+            try:
+                # 1단계: 문서 추출
+                print(f"[1/8] 문서 추출 진행 중.. ({filename})")
+                step_start = time.perf_counter()
+                ocr_result = self.ocr.extract_text_from_file(file_path)
+                raw_text = get_extracted_text(ocr_result)
+                source_document = ocr_result if isinstance(ocr_result, dict) else None
+                print(f"     문서 추출 완료 ({time.perf_counter() - step_start:.2f}s)")
+                
+                # 2단계: 텍스트 정제 및 조항 분리
+                print("[2/8] 텍스트 정제 및 조항 분리...")
+                step_start = time.perf_counter()
+                clean_text = self.text_processor.clean_text(raw_text)
+                clauses = self.text_processor.split_clauses_with_fallback(clean_text)
+                print(f"     총 {len(clauses)}개 조항 추출")
+                print(f"     텍스트 정제/분리 완료 ({time.perf_counter() - step_start:.2f}s)")
+                
+                # 3단계: 위험 조항 필터링
+                print("[3/8] 위험 조항 필터링...")
+                step_start = time.perf_counter()
+                skip_llm = os.getenv("SKIP_LLM", "false").lower() in ("1", "true", "yes", "y")
+                if skip_llm:
+                    risky_clauses = clauses
+                    print("     SKIP_LLM 활성화: 모든 조항을 위험 조항으로 간주")
+                else:
+                    risky_clauses = self.risk_assessor.filter_risky_clauses(clauses)
+                print(f"     위험 조항 {len(risky_clauses)}개 발견")
+                print(f"     위험 조항 필터링 완료 ({time.perf_counter() - step_start:.2f}s)")
+                
+                # 4단계: 판례 데이터 수집
+                print("[4/8] 공공 판례 API 호출...")
+                step_start = time.perf_counter()
+                all_precedents = []
+                all_laws = []
+                precedent_cache: dict[str, list] = {}
+                law_cache: dict[str, list] = {}
+                min_precedent_results = int(os.getenv("PRECEDENT_MIN_RESULTS") or "3")
+                min_law_results = int(os.getenv("LAW_MIN_RESULTS") or "3")
+                domain_keywords = [
+                    kw.strip()
+                    for kw in (
+                        os.getenv("LAW_DOMAIN_KEYWORDS")
+                        or "부동산,임대차,임대,임차,주택,전세,월세,보증금"
+                    ).split(",")
+                    if kw.strip()
+                ]
+                forced_domain_keywords = [
+                    kw.strip()
+                    for kw in (
+                        os.getenv("LAW_DOMAIN_KEYWORDS_FORCE")
+                        or "임대차,전세,월세,보증금,주택임대차,주택임대차보호법"
+                    ).split(",")
+                    if kw.strip()
+                ]
+                def _cached_fetch(cache: dict, key: str, fetch_fn):
+                    if key in cache:
+                        return list(cache[key])
+                    result = fetch_fn()
+                    if isinstance(result, str):
+                        result = []
+                    cache[key] = result
+                    return list(result)
 
-        # 7단계: 갑/을 토론 생성
-        print("[7/8] 갑/을 토론 생성...")
-        step_start = time.perf_counter()
-        contract_type = self.debate_agents.detect_contract_type(raw_text)
-        if skip_llm:
-            debate_transcript = [{"speaker": "system", "content": "SKIP_LLM: 토론 생략"}]
-            print("     SKIP_LLM 활성화: 토론 생략")
-        else:
-            debate_transcript = self.debate_agents.run(
-                risky_clauses,
-                raw_text=raw_text,
-                contract_type=contract_type,
-            )
-            # Align legacy labels with the new judge role name.
-            for turn in debate_transcript:
-                if turn.get("speaker") in ("mediator", "중재자"):
-                    turn["speaker"] = "판사"
-        print(f"     토론 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
-
-        # UI payload 생성 (조항별 P(L1~L4)) - 토론 스니펫 포함
-        if self.generate_ui_payload:
-            print("     UI payload 생성...")
-            debate_snippet = self._format_debate_transcript(debate_transcript or [])
-            if self.debate_snippet_max_chars > 0:
-                debate_snippet = debate_snippet[: self.debate_snippet_max_chars]
-            for clause in risky_clauses:
-                clause_id = clause.id
-                title = clause.title or clause.article_num
-                clause_text = clause.content or ""
-                risk_level = clause.risk_level.value if clause.risk_level else "unknown"
-                risk_reason = clause.risk_reason or ""
-                precedents = self._format_ref_titles(clause.related_precedents, is_precedent=True)
-                laws = self._format_ref_titles(clause.related_laws, is_precedent=False)
-                clause.ui_payload = self.llm_summarizer.generate_clause_ui_payload_v2(
-                    clause_id=clause_id,
-                    title=title,
-                    clause_text=clause_text,
-                    risk_level=risk_level,
-                    risk_reason=risk_reason,
-                    precedents=precedents,
-                    laws=laws,
-                    debate_snippet=debate_snippet,
+                for clause in risky_clauses:
+                    category = self.risk_mapper.map_risk_category(clause, all_precedents)
+                    keywords = forced_domain_keywords + domain_keywords + [clause.title]
+                    if category and category != "기타":
+                        keywords.extend(self.risk_mapper.get_keywords_for_category(category))
+                    query = " ".join([kw for kw in keywords if kw])
+                    precedents = _cached_fetch(
+                        precedent_cache,
+                        query,
+                        lambda: self.precedent_fetcher.fetch_precedents(query),
+                    )
+                    if len(precedents) < min_precedent_results and clause.title:
+                        fallback = _cached_fetch(
+                            precedent_cache,
+                            clause.title,
+                            lambda: self.precedent_fetcher.fetch_precedents(clause.title),
+                        )
+                        # merge by case_id to avoid duplicates
+                        seen = {p.case_id for p in precedents}
+                        for p in fallback:
+                            if p.case_id and p.case_id not in seen:
+                                precedents.append(p)
+                                seen.add(p.case_id)
+                    all_precedents.extend(precedents)
+                    laws = _cached_fetch(
+                        law_cache,
+                        query,
+                        lambda: self.law_fetcher.fetch_laws(query),
+                    )
+                    if len(laws) < min_law_results and clause.title:
+                        fallback = _cached_fetch(
+                            law_cache,
+                            clause.title,
+                            lambda: self.law_fetcher.fetch_laws(clause.title),
+                        )
+                        seen = {(l.doc_type, l.doc_id) for l in laws}
+                        for law in fallback:
+                            key = (law.doc_type, law.doc_id)
+                            if law.doc_id and key not in seen:
+                                laws.append(law)
+                                seen.add(key)
+                    all_laws.extend(laws)
+                all_laws = self.law_fetcher._dedupe_laws(all_laws)
+                print(f"     precedents {len(all_precedents)}, laws {len(all_laws)} collected")
+                print(f"     판례/법령 수집 완료 ({time.perf_counter() - step_start:.2f}s)")
+                
+                # 5단계: 임베딩 생성 및 유사도 검색
+                print("[5/8] 임베딩 생성 및 유사도 검색..")
+                step_start = time.perf_counter()
+                total_law_embed_chars = 0
+                total_precedent_embed_chars = 0
+                total_clause_embed_chars = 0
+                self.embedding_manager.attach_embeddings(
+                    all_laws,
+                    lambda law: self._format_law_text(
+                        law,
+                        max_chars=self.embedding_law_max_chars,
+                        content_max_chars=self.embedding_law_content_max_chars,
+                    ),
+                    max_items=self.embedding_law_limit,
                 )
+                self.embedding_manager.attach_embeddings(
+                    all_precedents,
+                    lambda precedent: self._format_precedent_text(
+                        precedent,
+                        max_chars=self.embedding_precedent_max_chars,
+                    ),
+                    max_items=self.embedding_precedent_limit,
+                )
+                for law in all_laws[: max(self.embedding_law_limit, 0) or len(all_laws)]:
+                    text = self._format_law_text(
+                        law,
+                        max_chars=self.embedding_law_max_chars,
+                        content_max_chars=self.embedding_law_content_max_chars,
+                    )
+                    if text:
+                        total_law_embed_chars += len(text)
+                for precedent in all_precedents[
+                    : max(self.embedding_precedent_limit, 0) or len(all_precedents)
+                ]:
+                    text = self._format_precedent_text(
+                        precedent,
+                        max_chars=self.embedding_precedent_max_chars,
+                    )
+                    if text:
+                        total_precedent_embed_chars += len(text)
+                for clause in risky_clauses:
+                    clause_text = self._format_clause_text(
+                        [clause], max_chars=self.embedding_clause_max_chars
+                    ) or (
+                        f"{clause.title or clause.article_num}\n{clause.content}"
+                    )
+                    if clause_text:
+                        total_clause_embed_chars += len(clause_text)
+                    clause_embedding = self.embedding_manager.generate_embedding(clause_text)
+                    similar_precedents = self.embedding_manager.find_similar_precedents_with_embedding(
+                        clause_embedding, all_precedents
+                    )
+                    similar_precedents = self._merge_chunk_precedents(
+                        clause_text, similar_precedents, embedding=clause_embedding
+                    )
+                    clause.related_precedents = similar_precedents
+                    similar_laws = self.embedding_manager.find_similar_laws_with_embedding(
+                        clause_embedding, all_laws
+                    )
+                    similar_laws = self._merge_chunk_laws(
+                        clause_text, similar_laws, embedding=clause_embedding
+                    )
+                    clause.related_laws = similar_laws
+                approx_tokens = (
+                    total_law_embed_chars + total_precedent_embed_chars + total_clause_embed_chars
+                ) // 4
+                print(
+                    "     임베딩 문자수 합계: "
+                    f"laws {total_law_embed_chars}, "
+                    f"precedents {total_precedent_embed_chars}, "
+                    f"clauses {total_clause_embed_chars}"
+                )
+                print(f"     임베딩 토큰(대략): {approx_tokens} (chars/4 기준)")
+                print("     유사도 검색 완료")
+                print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")
+                
+                # 6단계: 위험 유형 매핑 (카테고리 계산은 4단계 쿼리 생성에 이미 활용)
+                print("[6/8] 위험 유형 매핑...")
+                step_start = time.perf_counter()
+                print("     위험 유형 분류 완료")
+                print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
+ 
+                # 7단계: 갑/을 토론 생성
+                print("[7/8] 갑/을 토론 생성...")
+                step_start = time.perf_counter()
+                contract_type = self.debate_agents.detect_contract_type(raw_text)
+                if skip_llm:
+                    debate_transcript = [{"speaker": "system", "content": "SKIP_LLM: 토론 생략"}]
+                    print("     SKIP_LLM 활성화: 토론 생략")
+                else:
+                    debate_transcript = self.debate_agents.run(
+                        risky_clauses,
+                        raw_text=raw_text,
+                        contract_type=contract_type,
+                    )
+                    # Align legacy labels with the new judge role name.
+                    for turn in debate_transcript:
+                        if turn.get("speaker") in ("mediator", "중재자"):
+                            turn["speaker"] = "판사"
+                print(f"     토론 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+ 
+                # UI payload 생성 (조항별 P(L1~L4)) - 토론 스니펫 포함
+                if self.generate_ui_payload:
+                    print("     UI payload 생성...")
+                    debate_snippet = self._format_debate_transcript(debate_transcript or [])
+                    if self.debate_snippet_max_chars > 0:
+                        debate_snippet = debate_snippet[: self.debate_snippet_max_chars]
+                    def _build_ui_payload(clause: Clause) -> tuple[Clause, object]:
+                        clause_id = clause.id
+                        title = clause.title or clause.article_num
+                        clause_text = clause.content or ""
+                        if self.max_ui_input_chars > 0:
+                            clause_text = self._truncate_text(clause_text, self.max_ui_input_chars)
+                        risk_level = clause.risk_level.value if clause.risk_level else "unknown"
+                        risk_reason = clause.risk_reason or ""
+                        if self.max_ui_input_chars > 0:
+                            risk_reason = self._truncate_text(risk_reason, self.max_ui_input_chars)
+                        precedents = self._format_ref_titles(
+                            clause.related_precedents, is_precedent=True
+                        )
+                        if self.ui_ref_top_k > 0:
+                            precedents = precedents[: self.ui_ref_top_k]
+                        laws = self._format_ref_titles(clause.related_laws, is_precedent=False)
+                        if self.ui_ref_top_k > 0:
+                            laws = laws[: self.ui_ref_top_k]
+                        payload = self.llm_summarizer.generate_clause_ui_payload_v2(
+                            clause_id=clause_id,
+                            title=title,
+                            clause_text=clause_text,
+                            risk_level=risk_level,
+                            risk_reason=risk_reason,
+                            precedents=precedents,
+                            laws=laws,
+                            debate_snippet=debate_snippet,
+                        )
+                        return clause, payload
 
-        # 8단계: LLM 요약 생성
-        print("[8/8] LLM 조항 요약 생성...")
-        step_start = time.perf_counter()
-        if skip_llm:
-            llm_summary = "SKIP_LLM: 요약 생략"
-            print("     SKIP_LLM 활성화: 요약 생략")
-        else:
-            llm_summary = self.llm_summarizer.generate_comprehensive_report(
-                self._format_clause_text(risky_clauses)
-            )
-            if debate_transcript:
-                debate_text = self._format_debate_transcript(debate_transcript)
-                debate_summary = self.llm_summarizer.generate_debate_summary(debate_text)
-                if debate_summary and debate_summary != "api필요":
-                    llm_summary = f"{llm_summary}\n\n## 토론 요약\n{debate_summary}"
-        print(f"     요약 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
-        
-        # 결과 반환
-        result = ContractAnalysisResult(
-            filename=filename,
-            raw_text=raw_text,
-            clauses=clauses,
-            risky_clauses=risky_clauses,
-            precedents=all_precedents,
-            laws=all_laws,
-            llm_summary=llm_summary,
-            debate_transcript=debate_transcript,
-            contract_type=contract_type,
-            source_document=source_document,
-        )
-        
-        print("\n분석 완료!")
-        return result
+                    worker_count = min(
+                        max(self.ui_payload_workers, 1),
+                        len(risky_clauses) or 1,
+                    )
+                    if worker_count <= 1:
+                        for clause in risky_clauses:
+                            _, payload = _build_ui_payload(clause)
+                            clause.ui_payload = payload
+                    else:
+                        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                            futures = [executor.submit(_build_ui_payload, clause) for clause in risky_clauses]
+                            for future in as_completed(futures):
+                                clause, payload = future.result()
+                                clause.ui_payload = payload
+ 
+                # 8단계: LLM 요약 생성
+                print("[8/8] LLM 조항 요약 생성...")
+                step_start = time.perf_counter()
+                if skip_llm:
+                    llm_summary = "SKIP_LLM: 요약 생략"
+                    print("     SKIP_LLM 활성화: 요약 생략")
+                else:
+                    summary_input = self._format_clause_text(risky_clauses)
+                    if self.max_summary_input_chars > 0:
+                        summary_input = self._truncate_text(
+                            summary_input, self.max_summary_input_chars
+                        )
+                    llm_summary = self.llm_summarizer.generate_comprehensive_report(
+                        summary_input
+                    )
+                    if debate_transcript:
+                        debate_text = self._format_debate_transcript(debate_transcript)
+                        if self.max_debate_summary_input_chars > 0:
+                            debate_text = self._truncate_text(
+                                debate_text, self.max_debate_summary_input_chars
+                            )
+                        debate_summary = self.llm_summarizer.generate_debate_summary(
+                            debate_text
+                        )
+                        if debate_summary and debate_summary != "api필요":
+                            llm_summary = f"{llm_summary}\n\n## 토론 요약\n{debate_summary}"
+                print(f"     요약 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+                
+                # 결과 반환
+                result = ContractAnalysisResult(
+                    filename=filename,
+                    raw_text=raw_text,
+                    clauses=clauses,
+                    risky_clauses=risky_clauses,
+                    precedents=all_precedents,
+                    laws=all_laws,
+                    llm_summary=llm_summary,
+                    debate_transcript=debate_transcript,
+                    contract_type=contract_type,
+                    source_document=source_document,
+                )
+                
+                print(f"     API 호출 요약: {api_counter.format_summary()}")
+                summary_printed = True
+                print("\n분석 완료!")
+                return result
+            finally:
+                if api_counter is not None and not summary_printed:
+                    print(f"     API 호출 요약: {api_counter.format_summary()}")
 
     def analyze_only(self, file_path: str) -> ContractAnalysisResult:
         """Pipeline-only analysis helper (no negotiation)."""
@@ -431,11 +515,15 @@ class ContractAnalysisPipeline:
         return titles
 
     def _merge_chunk_precedents(
-        self, text: str, base: List[Precedent] | str
+        self,
+        text: str,
+        base: List[Precedent] | str,
+        embedding: Optional[List[float] | str] = None,
     ) -> List[Precedent] | str:
         if not self.use_chunk_vector_search or isinstance(base, str):
             return base
-        embedding = self.embedding_manager.generate_embedding(text)
+        if embedding is None:
+            embedding = self.embedding_manager.generate_embedding(text)
         if embedding == "api필요":
             return base
         matches = search_precedent_chunks_by_vector(embedding, limit=3)
@@ -449,10 +537,16 @@ class ContractAnalysisPipeline:
             base.append(chunk)
         return base
 
-    def _merge_chunk_laws(self, text: str, base: List[Law] | str) -> List[Law] | str:
+    def _merge_chunk_laws(
+        self,
+        text: str,
+        base: List[Law] | str,
+        embedding: Optional[List[float] | str] = None,
+    ) -> List[Law] | str:
         if not self.use_chunk_vector_search or isinstance(base, str):
             return base
-        embedding = self.embedding_manager.generate_embedding(text)
+        if embedding is None:
+            embedding = self.embedding_manager.generate_embedding(text)
         if embedding == "api필요":
             return base
         matches = search_law_chunks_by_vector(embedding, limit=3)

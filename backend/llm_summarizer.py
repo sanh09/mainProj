@@ -6,6 +6,7 @@ from typing import Optional
 class LLMSummarizer:
     def __init__(self, model: Optional[str] = None) -> None:
         self.model = model or os.getenv("OPENAI_SUMMARY_MODEL") or "o4-mini"
+        self.report_model = os.getenv("OPENAI_REPORT_MODEL") or self.model
         self.api_key = os.getenv("OPENAI_API_KEY") or "api필요"
         self._client = self._build_client() if self.api_key != "api??" else None
 
@@ -42,7 +43,7 @@ class LLMSummarizer:
             "Respond in Korean."
         )
         response = self._client.chat.completions.create(
-            model=self.model,
+            model=self.report_model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
@@ -63,7 +64,7 @@ class LLMSummarizer:
             "Use the exact section labels and keep each bullet concise."
         )
         response = self._client.chat.completions.create(
-            model=self.model,
+            model=self.report_model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
@@ -82,7 +83,7 @@ class LLMSummarizer:
             "Respond in Korean and keep it brief (6-10 bullets)."
         )
         response = self._client.chat.completions.create(
-            model=self.model,
+            model=self.report_model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
@@ -110,7 +111,7 @@ class LLMSummarizer:
             "No extra text outside JSON."
         )
         response = self._client.chat.completions.create(
-            model=self.model,
+            model=self.report_model,
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
@@ -166,12 +167,11 @@ class LLMSummarizer:
             "    \"note\": \"?? ???? ??? ???/??? ???? ??\"\n"
             "  },\n"
             "  \"L4\": {\n"
-            "    \"why\": \"??? ??\",\n"
+            "    \"why\": \"?? ??? ???\",\n"
             "    \"questions\": [\n"
-            "      {\"q\": \"?? ??? ??\", \"draft\": \"?? ??? ??\"},\n"
-            "      {\"q\": \"?? ??? ??\", \"draft\": \"?? ??? ??\"}\n"
-            "    ],\n"
-            "    \"copy_only\": true\n"
+            "      {\"q\": \"?? ??? ??\", \"reason\": \"?? ???? ??\"},\n"
+            "      {\"q\": \"?? ??? ??\", \"reason\": \"?? ???? ??\"}\n"
+            "    ]\n"
             "  }\n"
             "}\n"
             "Constraints:\n"
@@ -179,7 +179,14 @@ class LLMSummarizer:
             "- L1 fact_questions: 1-2 items, factual.\n"
             "- L2: use '??? ??' tone, avoid judgments.\n"
             "- L3: provide options A/B/C as ranges, not fixed edits.\n"
-            "- L4: why -> questions -> drafts, copy-friendly.\n"
+            "- L4: why -> questions with reasons (no drafts).\n"
+            "- L4 questions/reasons must focus on the problematic or unclear points in the clause.\n"
+            "- L4 should guide what to ask, not propose edits.\n"
+            "Strict JSON rules:\n"
+            "- Use double quotes for all keys and strings.\n"
+            "- No trailing commas.\n"
+            "- Do not wrap in code fences.\n"
+            "- If unsure, return empty arrays/strings but keep the schema.\n"
             "No extra text outside JSON. Respond in Korean.\n\n"
             f"Clause ID: {clause_id}\n"
             f"Title: {title}\n"
