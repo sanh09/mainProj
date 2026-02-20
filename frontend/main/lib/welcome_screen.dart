@@ -307,24 +307,24 @@ class WelcomeScreen extends StatelessWidget {
                                         ),
                                         Positioned.fill(
                                           child: Center(
-                                            child: Stack(
-                                              alignment: Alignment.center,
-                                              children: [
-                                                const _RotatingDashedRing(),
-                                                _FloatingBob(
-                                                  distance: 6,
-                                                  duration: const Duration(
-                                                    milliseconds: 3600,
-                                                  ),
-                                                  phase: 0.9,
-                                                  child: _CaptureButton(
+                                            child: _FloatingBob(
+                                              distance: 6,
+                                              duration: const Duration(
+                                                milliseconds: 3600,
+                                              ),
+                                              phase: 0.9,
+                                              child: Stack(
+                                                alignment: Alignment.center,
+                                                children: [
+                                                  const _RotatingDashedRing(),
+                                                  _CaptureButton(
                                                     onPressed: () =>
                                                         _showCaptureOptions(
                                                           context,
                                                         ),
                                                   ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -1235,7 +1235,7 @@ class _RotatingDashedRingState extends State<_RotatingDashedRing>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 20),
+      duration: const Duration(seconds: 24),
     )..repeat();
   }
 

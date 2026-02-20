@@ -29,6 +29,28 @@ class DetailPalette {
 
 enum _DetailTab { debate, alternative, question }
 
+class DetailQuestion {
+  final String title;
+  final String hint;
+
+  const DetailQuestion({
+    required this.title,
+    required this.hint,
+  });
+}
+
+class DetailAlternative {
+  final String grade;
+  final String title;
+  final String text;
+
+  const DetailAlternative({
+    required this.grade,
+    required this.title,
+    required this.text,
+  });
+}
+
 class DetailScreen extends StatefulWidget {
   final String clauseText;
   final String tenantArgument;
@@ -37,6 +59,9 @@ class DetailScreen extends StatefulWidget {
   final List<String> landlordTags;
   final List<String> negotiationPoints;
   final String compromiseQuote;
+  final List<DetailQuestion> questions;
+  final String? draftText;
+  final List<DetailAlternative> alternatives;
 
   const DetailScreen({
     super.key,
@@ -47,6 +72,9 @@ class DetailScreen extends StatefulWidget {
     required this.landlordTags,
     required this.negotiationPoints,
     required this.compromiseQuote,
+    required this.questions,
+    this.draftText,
+    required this.alternatives,
   });
 
   factory DetailScreen.sample() {
@@ -61,6 +89,44 @@ class DetailScreen extends StatefulWidget {
       landlordTags: ['재산 보호', '손해 보상'],
       negotiationPoints: ['수리 범위와 소모품 기준을 계약서에 명확히 기재', '퇴거 시 분쟁 방지를 위한 기준 합의'],
       compromiseQuote: '양측의 부담 범위를 구체적으로 합의하고, 분쟁 발생 시 객관적 기준을 적용하도록 명시하세요.',
+      alternatives: [
+        DetailAlternative(
+          grade: 'A',
+          title: '옵션 A',
+          text:
+              '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
+        ),
+        DetailAlternative(
+          grade: 'B',
+          title: '옵션 B',
+          text:
+              '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
+        ),
+        DetailAlternative(
+          grade: 'C',
+          title: '옵션 C',
+          text:
+              '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
+        ),
+      ],
+      questions: [
+        DetailQuestion(
+          title: '"책임 있는 사유"에 해당하는 예시를 제시해주실 수 있나요?',
+          hint: '추상적 문구는 분쟁 소지가 있어 구체적 기준이 필요합니다.',
+        ),
+        DetailQuestion(
+          title: '손해 금액 산정 기준과 감정 비용 부담 주체는 누구인가요?',
+          hint: '객관적 기준과 비용 부담 주체를 확인하는 것이 좋습니다.',
+        ),
+        DetailQuestion(
+          title: '자연 마모도 임차인 책임 범위에 포함되나요?',
+          hint: '원칙적으로 임대인 부담이므로 특약 여부를 확인하세요.',
+        ),
+        DetailQuestion(
+          title: '손해 공제에 이의가 있을 때 해결 절차는 어떻게 되나요?',
+          hint: '분쟁 해결 절차를 미리 확인하는 것이 좋습니다.',
+        ),
+      ],
     );
   }
 
@@ -141,7 +207,10 @@ class _DetailScreenState extends State<DetailScreen> {
                             : safeCompromiseQuote,
                       ),
                       const SizedBox(height: 16),
-                      _AlternativeSection(isDark: isDark),
+                      _AlternativeSection(
+                        isDark: isDark,
+                        alternatives: widget.alternatives,
+                      ),
                     ] else ...[
                       _WhySection(
                         isDark: isDark,
@@ -150,7 +219,10 @@ class _DetailScreenState extends State<DetailScreen> {
                             : safeCompromiseQuote,
                       ),
                       const SizedBox(height: 16),
-                      const _QuestionDraftSection(),
+                      _QuestionDraftSection(
+                        questions: widget.questions,
+                        draftText: widget.draftText,
+                      ),
                     ],
                   ],
                 ),
@@ -710,21 +782,48 @@ class _PerspectiveSection extends StatelessWidget {
 
 class _AlternativeSection extends StatefulWidget {
   final bool isDark;
+  final List<DetailAlternative> alternatives;
 
-  const _AlternativeSection({required this.isDark});
+  const _AlternativeSection({
+    required this.isDark,
+    required this.alternatives,
+  });
 
   @override
   State<_AlternativeSection> createState() => _AlternativeSectionState();
 }
 
 class _AlternativeSectionState extends State<_AlternativeSection> {
-  String _selectedGrade = 'B';
+  String? _selectedGrade;
 
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
     final textColor = isDark ? Colors.white70 : DetailPalette.textMuted;
     final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    const fallbackAlternatives = [
+      DetailAlternative(
+        grade: 'A',
+        title: '옵션 A',
+        text:
+            '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
+      ),
+      DetailAlternative(
+        grade: 'B',
+        title: '옵션 B',
+        text:
+            '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
+      ),
+      DetailAlternative(
+        grade: 'C',
+        title: '옵션 C',
+        text:
+            '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
+      ),
+    ];
+    final alternatives = widget.alternatives.isNotEmpty
+        ? widget.alternatives
+        : fallbackAlternatives;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -743,132 +842,50 @@ class _AlternativeSectionState extends State<_AlternativeSection> {
           ],
         ),
         const SizedBox(height: 14),
-
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            if (_selectedGrade == 'B')
-              Positioned(
-                top: -10,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: DetailPalette.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'AI 추천',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
+        for (var i = 0; i < alternatives.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _AlternativeChoiceCard(
+                isDark: isDark,
+                grade: alternatives[i].grade,
+                title: alternatives[i].title,
+                selected: _selectedGrade == alternatives[i].grade,
+                text: alternatives[i].text,
+                color: cardColor,
+                onTap: () =>
+                    setState(() => _selectedGrade = alternatives[i].grade),
+              ),
+              if (_selectedGrade == alternatives[i].grade)
+                Positioned(
+                  top: -10,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: DetailPalette.primary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'AI 추천',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            _AlternativeChoiceCard(
-              isDark: isDark,
-              grade: 'A',
-              title: '보수적',
-              selected: _selectedGrade == 'A',
-              text:
-                  '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
-              color: cardColor,
-              onTap: () => setState(() => _selectedGrade = 'B'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            if (_selectedGrade == 'B')
-              Positioned(
-                top: -10,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: DetailPalette.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'AI 추천',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            _AlternativeChoiceCard(
-              isDark: isDark,
-              grade: 'B',
-              title: '중립적',
-              selected: _selectedGrade == 'B',
-              text:
-                  '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
-              color: cardColor,
-              onTap: () => setState(() => _selectedGrade = 'B'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            if (_selectedGrade == 'B')
-              Positioned(
-                top: -10,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: DetailPalette.primary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'AI 추천',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            _AlternativeChoiceCard(
-              isDark: isDark,
-              grade: 'C',
-              title: '상대방 친화적',
-              selected: _selectedGrade == 'C',
-              text:
-                  '계약 상대방은 직접적인 손해에 대해 책임을 지며, 총 책임 한도는 10만 달러 또는 청구 전 12개월 동안 지급된 총 수수료 중 더 큰 금액으로 제한된다.',
-              color: cardColor,
-              onTap: () => setState(() => _selectedGrade = 'C'),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
         const SizedBox(height: 18),
         Center(
           child: Column(
@@ -1029,12 +1046,18 @@ class _AlternativeChoiceCard extends StatelessWidget {
 }
 
 class _QuestionDraftSection extends StatelessWidget {
-  const _QuestionDraftSection();
+  final List<DetailQuestion> questions;
+  final String? draftText;
+
+  const _QuestionDraftSection({
+    required this.questions,
+    required this.draftText,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const draftText = '''
+    const fallbackDraftText = '''
 안녕하세요, 계약서 제5조 보증금 반환 조항과 관련하여 몇 가지 확인하고 싶은 사항이 있습니다.
 1. '임차인의 책임 있는 사유'의 구체적인 범위
  - 어떤 경우가 여기에 해당하는지 예시를 알려주시면 감사하겠습니다
@@ -1045,6 +1068,30 @@ class _QuestionDraftSection extends StatelessWidget {
 3. 이의 제기 절차
  - 손해 공제 금액에 이의가 있을 경우 어떻게 해결하나요?
 명확한 기준이 있으면 서로 편할 것 같아 여쭤봅니다.''';
+    const fallbackQuestions = [
+      DetailQuestion(
+        title: '\'구체적으로 어떤 경우가 "책임 있는 사유"에 해당하는지 예시를 제시해주실 수 있나요?\'',
+        hint: '추상적인 문구는 분쟁의 원인이 됩니다. 구체적인 사례로 범위를 한정짓는 것이 유리합니다.',
+      ),
+      DetailQuestion(
+        title: '\'손해 금액은 어떤 방식으로 산정하며, 제3자 감정이 필요한 경우 비용은 누가 부담하나요?\'',
+        hint: '임대인이 임의로 고액의 수리비를 청구하는 것을 방지하기 위해 객관적 기준이 필요합니다.',
+      ),
+      DetailQuestion(
+        title: '\'통상적인 사용으로 인한 자연 마모(벽지 변색, 바닥 흠집 등)도 임차인 책임인가요?\'',
+        hint: '자연 마모는 원칙적으로 임대인의 부담이나, 특약으로 전가될 수 있어 확인이 필요합니다.',
+      ),
+      DetailQuestion(
+        title: '\'손해 공제에 이의가 있을 경우 해결 절차는 어떻게 되나요?\'',
+        hint: '보증금 반환이 지연되지 않도록 분쟁 해결 절차를 미리 알아두는 것이 좋습니다.',
+      ),
+    ];
+    final resolvedQuestions = questions.isNotEmpty
+        ? questions
+        : fallbackQuestions;
+    final resolvedDraftText = (draftText == null || draftText!.trim().isEmpty)
+        ? fallbackDraftText
+        : draftText!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1069,25 +1116,13 @@ class _QuestionDraftSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        _QuestionCard(
-          title: '\'구체적으로 어떤 경우가 "책임 있는 사유"에 해당하는지 예시를 제시해주실 수 있나요?\'',
-          hint: '추상적인 문구는 분쟁의 원인이 됩니다. 구체적인 사례로 범위를 한정짓는 것이 유리합니다.',
-        ),
-        const SizedBox(height: 12),
-        _QuestionCard(
-          title: '\'손해 금액은 어떤 방식으로 산정하며, 제3자 감정이 필요한 경우 비용은 누가 부담하나요?\'',
-          hint: '임대인이 임의로 고액의 수리비를 청구하는 것을 방지하기 위해 객관적 기준이 필요합니다.',
-        ),
-        const SizedBox(height: 12),
-        _QuestionCard(
-          title: '\'통상적인 사용으로 인한 자연 마모(벽지 변색, 바닥 흠집 등)도 임차인 책임인가요?\'',
-          hint: '자연 마모는 원칙적으로 임대인의 부담이나, 특약으로 전가될 수 있어 확인이 필요합니다.',
-        ),
-        const SizedBox(height: 12),
-        _QuestionCard(
-          title: '\'손해 공제에 이의가 있을 경우 해결 절차는 어떻게 되나요?\'',
-          hint: '보증금 반환이 지연되지 않도록 분쟁 해결 절차를 미리 알아두는 것이 좋습니다.',
-        ),
+        for (var i = 0; i < resolvedQuestions.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          _QuestionCard(
+            title: resolvedQuestions[i].title,
+            hint: resolvedQuestions[i].hint,
+          ),
+        ],
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
@@ -1161,7 +1196,7 @@ class _QuestionDraftSection extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        draftText,
+                        resolvedDraftText,
                         style: TextStyle(
                           fontSize: 12.5,
                           height: 1.6,
@@ -1175,7 +1210,7 @@ class _QuestionDraftSection extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: () async {
                         await Clipboard.setData(
-                          const ClipboardData(text: draftText),
+                          ClipboardData(text: resolvedDraftText),
                         );
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(

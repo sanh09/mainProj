@@ -1,46 +1,45 @@
 ﻿# Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is a monorepo with three services and shared orchestration.
-- `frontend/`: Flutter app. Main code lives in `frontend/main/lib/`; widget tests live in `frontend/main/test/`.
-- `backend/`: Python OCR + AI analysis pipeline and FastAPI server.
-- `realtime/`: Placeholder for real-time/WebSocket processing (currently `.gitkeep`).
-- `docker-compose.yml`: top-level multi-service orchestration.
+- Repo root contains `frontend/`, `backend/`, `realtime/`, and `docker-compose.yml`.
+- Flutter app lives in `frontend/main/`.
+- App source: `frontend/main/lib/`.
+- Widget tests: `frontend/main/test/`.
+- Platform targets: `frontend/main/android/`, `ios/`, `web/`, `windows/`, `macos/`, `linux/`.
+- Backend OCR + AI pipeline and FastAPI server live in `backend/`.
 
 ## Build, Test, and Development Commands
-Frontend (run from `frontend/main/`):
-- `flutter pub get`: install Flutter dependencies.
-- `flutter run`: launch the app on a connected device/emulator.
-- `flutter test`: run widget/unit tests.
-- `flutter build apk` / `flutter build ios` / `flutter build web`: build deployable artifacts.
+Run frontend commands from `frontend/main/`.
+- `flutter pub get`: install dependencies.
+- `flutter analyze`: run analyzer with `flutter_lints`.
+- `dart format .`: format Dart code (2-space indent).
+- `flutter test`: run all widget tests.
+- `flutter test test/widget_test.dart`: run one test file.
+- `flutter test test/widget_test.dart --name "Login screen renders"`: run a single test by name (regex).
+- `flutter run -d <device_id>`: run on a device/emulator.
+- `flutter build apk` | `flutter build ios` | `flutter build web`: build targets.
 
-Backend (run from `backend/`):
-- `pip install requests openai fastapi uvicorn`: install core dependencies.
-- `uvicorn api:app --reload --port 8000`: start local API server.
-- `python -c "from pipeline import ContractAnalysisPipeline; p=ContractAnalysisPipeline(); p.analyze(r'file.pdf')"`: run the analysis pipeline from CLI.
+Backend (run from `backend/`).
+- `pip install requests openai fastapi uvicorn`: install deps.
+- `uvicorn app.main:app --reload --port 8000`: start API server.
 
 ## Coding Style & Naming Conventions
-- Python: 4-space indentation, `snake_case` for functions/variables, `PascalCase` for classes.
-- Dart/Flutter: format with `dart format` (2-space indentation), prefer `const` widgets when possible.
-- Dart naming: `lowerCamelCase` for members, `PascalCase` for types.
-- Dart imports: `dart:` first, then `package:`, then relative imports.
+- Dart: single quotes, trailing commas for multiline widgets/collections.
+- Import order: `dart:` then `package:` then relative; keep groups separated by a blank line.
+- Prefer `final`; use `late final` for `initState` values; use `const` widgets where possible.
+- Naming: `PascalCase` for classes, `lowerCamelCase` for vars/methods, leading `_` for private.
+- Python: 4-space indent, `snake_case` for functions/vars, `PascalCase` for classes.
 
 ## Testing Guidelines
-- Frontend uses `flutter_test`; keep tests under `frontend/main/test/`.
-- Name tests by feature/behavior and run with `flutter test` before opening PRs.
-- Backend has no standard test framework yet; if adding tests, place them near modules or in `backend/tests/` and document run commands.
+- Frontend uses `flutter_test` with `*_test.dart` files in `frontend/main/test/`.
+- Prefer user-visible assertions; use `pumpWidget(const App())` for top-level tests.
+- Backend currently has no test runner configured; if added, keep tests in `backend/tests/` and document the command.
 
 ## Commit & Pull Request Guidelines
-- Use concise, imperative commit messages (e.g., `Update frontend`, `chore: adjust API client`).
-- PRs should include a short summary, commands run (or `not run`), and screenshots for UI changes.
+- Commit messages are short, imperative; optional type prefixes (e.g., `chore: Update deps`).
+- PRs should include a summary, tests run (or "not run"), and UI screenshots for visual changes.
 
 ## Security & Configuration Tips
-- Never commit secrets.
-- Backend requires `UPSTAGE_API_KEY` and `OPENAI_API_KEY` environment variables (`backend/README.md`).
-- Document any new required env vars in the relevant service README.
-
-## Architecture Overview
-Backend flow: OCR -> text cleanup/splitting -> risky clause filtering -> precedent/law lookup -> embedding similarity -> risk mapping -> debate generation -> LLM summary.
-
-## Agent-Specific Instructions
-For frontend UI work, follow `frontend/main/AGENTS.md` conventions.
+- Never commit secrets or API keys.
+- Backend requires `UPSTAGE_API_KEY` and `OPENAI_API_KEY`.
+- Keep dependencies declared in `frontend/main/pubspec.yaml` and run `flutter pub get` after changes.

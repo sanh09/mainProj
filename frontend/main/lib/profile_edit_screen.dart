@@ -68,42 +68,6 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-class _EditStatusBar extends StatelessWidget {
-  final bool isDark;
-
-  const _EditStatusBar({required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isDark ? Colors.white : ProfileEditPalette.textDark;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 10, 22, 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            '9:41',
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
-          Row(
-            children: [
-              Icon(Icons.signal_cellular_alt_rounded, color: color, size: 18),
-              const SizedBox(width: 4),
-              Icon(Icons.wifi_rounded, color: color, size: 18),
-              const SizedBox(width: 4),
-              Icon(Icons.battery_full_rounded, color: color, size: 18),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 프로필 수정 화면.
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -398,7 +362,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 ),
                 Column(
                 children: [
-                  _EditStatusBar(isDark: isDark),
                   _EditAppBar(onCancel: () => Navigator.of(context).pop()),
                   Expanded(
                     child: _loading

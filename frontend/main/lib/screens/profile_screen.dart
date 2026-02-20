@@ -1,4 +1,5 @@
 ﻿import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,8 @@ class SettingsPalette {
   static const Color textDark = Color(0xFF1F2937);
   static const Color textMuted = Color(0xFF6B7280);
 }
+
+enum _RiskLevel { low, medium, high }
 
 class _Blob extends StatelessWidget {
   final double size;
@@ -144,6 +147,7 @@ class _SettingsTile extends StatelessWidget {
   final String label;
   final String? trailingLabel;
   final bool isLast;
+  final VoidCallback? onTap;
 
   const _SettingsTile({
     required this.icon,
@@ -152,6 +156,7 @@ class _SettingsTile extends StatelessWidget {
     required this.label,
     this.trailingLabel,
     this.isLast = false,
+    this.onTap,
   });
 
   @override
@@ -171,7 +176,7 @@ class _SettingsTile extends StatelessWidget {
       ),
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        onTap: () {},
+        onTap: onTap,
         leading: Container(
           width: 36,
           height: 36,
@@ -501,6 +506,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final String? _email;
   late Future<_ProfileData?> _profileFuture;
   bool _notificationsEnabled = true;
+  _RiskLevel _riskLevel = _RiskLevel.medium;
 
   @override
   void initState() {
@@ -573,6 +579,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  String _riskLevelLabel(_RiskLevel level) {
+    switch (level) {
+      case _RiskLevel.low:
+        return '낮음';
+      case _RiskLevel.medium:
+        return '중간';
+      case _RiskLevel.high:
+        return '높음';
+    }
+  }
+
+  Future<void> _showRiskLevelPicker() async {
+    if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '위험 감수 수준',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : SettingsPalette.textDark,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final level in _RiskLevel.values)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _riskLevelLabel(level),
+                      style: TextStyle(
+                        color:
+                            isDark ? Colors.white : SettingsPalette.textDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing: _riskLevel == level
+                        ? Icon(
+                            Icons.check_circle,
+                            color: SettingsPalette.primary,
+                          )
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        _riskLevel = level;
+                      });
+                      Navigator.of(context).pop();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Map<String, dynamic> _unwrapProfileMap(Map<String, dynamic> data) {
     final nestedKeys = ['data', 'profile', 'user', 'result'];
     for (final key in nestedKeys) {
@@ -609,7 +684,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         : SettingsPalette.backgroundLight;
     return Scaffold(
       backgroundColor: backgroundColor,
-      body: SafeArea(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = math.min(430.0, constraints.maxWidth);
+          return Center(
+            child: SizedBox(
+              width: maxWidth,
+              height: constraints.maxHeight,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: Container(
+                  decoration: const BoxDecoration(color: Colors.transparent),
+                  child: SafeArea(
         bottom: false,
         child: Stack(
           children: [
@@ -662,32 +748,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? const Color(0xFF1F2937)
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(999),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.08,
-                                      ),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.settings,
-                                  color: isDark
-                                      ? const Color(0xFFE2E8F0)
-                                      : const Color(0xFF475569),
-                                  size: 20,
-                                ),
-                              ),
+                              const SizedBox(width: 40, height: 40),
                             ],
                           ),
                           const SizedBox(height: 20),
@@ -842,7 +903,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ? const Color(0xFF064E3B)
                                       : const Color(0xFFD1FAE5),
                                   label: '위험 감수 수준',
-                                  trailingLabel: '중간 (Medium)',
+                                  trailingLabel: _riskLevelLabel(_riskLevel),
+                                  onTap: _showRiskLevelPicker,
                                 ),
                                 _SettingsTile(
                                   icon: Icons.tune,
@@ -899,6 +961,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1352,3 +1420,6 @@ class _CaptureOptionTile extends StatelessWidget {
     );
   }
 }
+
+
+

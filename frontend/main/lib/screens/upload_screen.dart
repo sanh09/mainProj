@@ -94,6 +94,17 @@ class _UploadScreenState extends State<UploadScreen> {
     return null;
   }
 
+  String _logPreview(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '<empty>';
+    }
+    if (trimmed.length <= 400) {
+      return trimmed;
+    }
+    return '${trimmed.substring(0, 400)}...';
+  }
+
   /// 파일 선택기를 열고 선택된 파일을 분석 API로 전송한다.
   Future<void> _handleUpload(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -178,9 +189,15 @@ class _UploadScreenState extends State<UploadScreen> {
       }
 
       final response = await request.send();
-      final body = await response.stream.bytesToString();
-      debugPrint('[upload] status=${response.statusCode} bodyLen=${body.length}');
-      debugPrint('[upload] body=$body');
+      final responseBytes = await response.stream.toBytes();
+      final body = utf8.decode(responseBytes, allowMalformed: true);
+      debugPrint('[upload] status=${response.statusCode}');
+      debugPrint('[upload] headers=${response.headers}');
+      debugPrint('[upload] bytesLen=${responseBytes.length}');
+      debugPrint('[upload] utf8=${_logPreview(body)}');
+      debugPrint(
+        '[upload] latin1=${_logPreview(latin1.decode(responseBytes, allowInvalid: true))}',
+      );
 
       if (response.statusCode != 200) {
         // 상태 코드가 200이 아니면 실패로 처리한다.

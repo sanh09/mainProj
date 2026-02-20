@@ -9,13 +9,25 @@ import 'detail.dart';
 import 'login_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
-import 'shared/color_compat.dart';
+import 'signup_screen.dart';
 import 'user_session.dart';
 import 'welcome_screen.dart';
+
+part 'result_clause_list.dart';
 
 final Map<String, Map<String, dynamic>> _detailCache = {};
 final Map<String, Future<Map<String, dynamic>>> _detailInFlight = {};
 
+String _logPreview(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return '<empty>';
+  }
+  if (trimmed.length <= 400) {
+    return trimmed;
+  }
+  return '${trimmed.substring(0, 400)}...';
+}
 class AnalysisFlowTrace {
   static Stopwatch? _stopwatch;
   static String? _source;
@@ -705,6 +717,9 @@ class _ResultScreenState extends State<ResultScreen> {
   String? _lastTapKey;
   DateTime? _lastTapAt;
   bool _isDetailOpening = false;
+  bool _isLoginDialogOpen = false;
+  bool _isLoginFlowActive = false;
+  VoidCallback? _pendingLoginAction;
 
   @override
   void initState() {
@@ -797,6 +812,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                   if (shouldShowRawText)
                                     _OcrRawTextCard(
                                       isDark: isDark,
+                                      isLocked: !_isLoggedIn,
                                       text: widget.viewModel.data.rawText!,
                                       highlights:
                                           widget.viewModel.data.rawHighlights,
@@ -861,8 +877,190 @@ class _ResultScreenState extends State<ResultScreen> {
     return true;
   }
 
+  bool get _isLoggedIn => UserSession.userId != null;
+
+  void _requireLogin(BuildContext context, VoidCallback onSuccess) {
+    _pendingLoginAction = onSuccess;
+    _showLoginRequiredDialog(context);
+  }
+
+  void _openLoginFlow(BuildContext context) {
+    if (_isLoginFlowActive) {
+      return;
+    }
+    _isLoginFlowActive = true;
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          onLogin: () {
+            if (!context.mounted) {
+              return;
+            }
+            Navigator.of(context).pop();
+            final pending = _pendingLoginAction;
+            _pendingLoginAction = null;
+            if (pending != null) {
+              pending();
+            }
+          },
+          onSignupClick: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SignupScreen(
+                  onSignup: () {
+                    if (!context.mounted) {
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                  },
+                  onBack: () {
+                    if (!context.mounted) {
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                  },
+                  onLoginTap: () {
+                    if (!context.mounted) {
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    )
+        .whenComplete(() {
+      _isLoginFlowActive = false;
+      if (!_isLoggedIn) {
+        _pendingLoginAction = null;
+      }
+    });
+  }
+
+  Future<void> _showLoginRequiredDialog(BuildContext context) async {
+    if (_isLoginDialogOpen || !context.mounted) {
+      return;
+    }
+    _isLoginDialogOpen = true;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+            decoration: BoxDecoration(
+              color: isDark ? ResultPalette.cardDark : ResultPalette.cardLight,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isDark ? Colors.white12 : ResultPalette.cardBorder,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: ResultPalette.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.lock_rounded,
+                    color: ResultPalette.primary,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '로그인이 필요합니다',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : ResultPalette.textHeader,
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'AI 요약과 자세히 보기는 로그인 후 이용 가능합니다.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : ResultPalette.textBody,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        if (!context.mounted) {
+                          return;
+                        }
+                        _openLoginFlow(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ResultPalette.primary,
+                      foregroundColor: Colors.white,
+                      shape: const StadiumBorder(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      elevation: 4,
+                      shadowColor:
+                          ResultPalette.primary.withValues(alpha: 0.25),
+                    ),
+                    child: const Text(
+                      '로그인하기',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  style: TextButton.styleFrom(
+                    foregroundColor:
+                        isDark ? Colors.white70 : ResultPalette.textMuted,
+                    textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  child: const Text('나중에'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    _isLoginDialogOpen = false;
+  }
+
 
   void _handleHighlightTap(BuildContext context, ContractClause clause) {
+    if (!_isLoggedIn) {
+      _requireLogin(context, () => _handleHighlightTap(context, clause));
+      return;
+    }
     final analysisId = widget.viewModel.analysisId;
     if (analysisId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -927,6 +1125,10 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   void _handleOcrHighlightTap(BuildContext context, String highlight) {
+    if (!_isLoggedIn) {
+      _requireLogin(context, () => _handleOcrHighlightTap(context, highlight));
+      return;
+    }
     final clauses = widget.viewModel.data.clauses;
     ContractClause? matched;
     for (final clause in clauses) {
@@ -978,6 +1180,10 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   void _openSelectedClauseDetail(BuildContext context) {
+    if (!_isLoggedIn) {
+      _requireLogin(context, () => _openSelectedClauseDetail(context));
+      return;
+    }
     if (_isDetailOpening) {
       return;
     }
@@ -1188,12 +1394,14 @@ class ResultBottomNav extends StatelessWidget {
         color: isDark
             ? const Color(0xCC1A1612)
             : ResultPalette.cardLight.withValues(alpha: 0.9),
-        border: Border(
-          top: BorderSide(
-            color: isDark
-                ? const Color(0xFF1F2937)
-                : ResultPalette.primary.withValues(alpha: 0.2),
-          ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
+        ),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF1F2937)
+              : ResultPalette.primary.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
@@ -1275,14 +1483,6 @@ class ResultBottomNav extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Container(
-            width: 120,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
         ],
       ),
     );
@@ -1334,12 +1534,14 @@ class _ResultNavItem extends StatelessWidget {
 
 class _OcrRawTextCard extends StatelessWidget {
   final bool isDark;
+  final bool isLocked;
   final String text;
   final List<String> highlights;
   final ValueChanged<String> onHighlightTap;
 
   const _OcrRawTextCard({
     required this.isDark,
+    required this.isLocked,
     required this.text,
     required this.highlights,
     required this.onHighlightTap,
@@ -1354,20 +1556,30 @@ class _OcrRawTextCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RichText(
-            text: TextSpan(
-              style: TextStyle(
-                color: textColor,
-                fontSize: 15,
-                height: 1.6,
+          Stack(
+            children: [
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                    height: 1.6,
+                  ),
+                  children: _buildHighlightSpans(
+                    text,
+                    highlights,
+                    ResultPalette.riskBlue,
+                    onTap: onHighlightTap,
+                  ),
+                ),
               ),
-              children: _buildHighlightSpans(
-                text,
-                highlights,
-                ResultPalette.riskBlue,
-                onTap: onHighlightTap,
-              ),
-            ),
+              if (isLocked)
+                const Positioned(
+                  right: 0,
+                  top: 0,
+                  child: _LockBadge(),
+                ),
+            ],
           ),
         ],
       ),
@@ -1435,356 +1647,6 @@ class _OcrRawTextCard extends StatelessWidget {
   }
 }
 
-// 조항 리스트 섹션.
-class ResultClauseList extends StatelessWidget {
-  final bool isDark;
-  final List<ContractClause> clauses;
-  final ValueChanged<ContractClause> onHighlightTap;
-  final ContractClause? selectedClause;
-  final bool showSummary;
-  final List<ResultSummarySpan> summarySpans;
-  final VoidCallback onCloseSummary;
-  final VoidCallback onSummaryAction;
-
-  const ResultClauseList({
-    super.key,
-    required this.isDark,
-    required this.clauses,
-    required this.onHighlightTap,
-    required this.selectedClause,
-    required this.showSummary,
-    required this.summarySpans,
-    required this.onCloseSummary,
-    required this.onSummaryAction,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          for (final clause in clauses)
-            _ClauseSection(
-              isDark: isDark,
-              clause: clause,
-              onHighlightTap: onHighlightTap,
-              isSelected: selectedClause == clause,
-              showSummary: showSummary,
-              summarySpans: summarySpans,
-              onCloseSummary: onCloseSummary,
-              onSummaryAction: onSummaryAction,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// 단일 조항 섹션(제목 + 본문 하이라이트).
-class _ClauseSection extends StatefulWidget {
-  final bool isDark;
-  final ContractClause clause;
-  final ValueChanged<ContractClause> onHighlightTap;
-  final bool isSelected;
-  final bool showSummary;
-  final List<ResultSummarySpan> summarySpans;
-  final VoidCallback onCloseSummary;
-  final VoidCallback onSummaryAction;
-
-  const _ClauseSection({
-    required this.isDark,
-    required this.clause,
-    required this.onHighlightTap,
-    required this.isSelected,
-    required this.showSummary,
-    required this.summarySpans,
-    required this.onCloseSummary,
-    required this.onSummaryAction,
-  });
-
-  @override
-  State<_ClauseSection> createState() => _ClauseSectionState();
-}
-
-class _ClauseSectionState extends State<_ClauseSection> {
-  final List<TapGestureRecognizer> _recognizers = [];
-
-  @override
-  void dispose() {
-    for (final recognizer in _recognizers) {
-      recognizer.dispose();
-    }
-    _recognizers.clear();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final baseTextColor = widget.isDark
-        ? Colors.grey.shade300
-        : ResultPalette.textBody;
-    final highlights = widget.clause.highlights.isNotEmpty
-        ? widget.clause.highlights
-        : (widget.clause.highlight != null
-              ? [widget.clause.highlight!]
-              : const <String>[]);
-    final highlightColor = _riskColor(
-      widget.clause.risk,
-      hasHighlight: highlights.isNotEmpty,
-    );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.clause.title,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: widget.isDark
-                        ? Colors.white
-                        : ResultPalette.textHeader,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          RichText(
-            text: TextSpan(
-              style: TextStyle(
-                fontSize: 17,
-                height: 1.6,
-                color: baseTextColor,
-              ),
-              children: _buildHighlightSpans(
-                widget.clause.body,
-                highlights,
-                highlightColor,
-              ),
-            ),
-          ),
-          if (widget.isSelected &&
-              widget.showSummary &&
-              widget.summarySpans.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: ResultSummaryCard(
-                isDark: widget.isDark,
-                spans: widget.summarySpans,
-                onClose: widget.onCloseSummary,
-                onAction: widget.onSummaryAction,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  List<TextSpan> _buildHighlightSpans(
-    String body,
-    List<String> highlights,
-    Color? color,
-  ) {
-    if (highlights.isEmpty || color == null) {
-      return [TextSpan(text: body)];
-    }
-
-    final ranges = <_HighlightRange>[];
-    for (final highlight in highlights) {
-      final range = ResultViewModel._findHighlightRange(body, highlight);
-      if (range != null) {
-        ranges.add(range);
-      }
-    }
-    if (ranges.isEmpty) {
-      return [TextSpan(text: body)];
-    }
-
-    ranges.sort((a, b) => a.start.compareTo(b.start));
-    final merged = <_HighlightRange>[];
-    for (final range in ranges) {
-      if (merged.isEmpty || range.start > merged.last.end) {
-        merged.add(range);
-      } else if (range.end > merged.last.end) {
-        merged[merged.length - 1] = _HighlightRange(
-          merged.last.start,
-          range.end,
-        );
-      }
-    }
-
-    final spans = <TextSpan>[];
-    var cursor = 0;
-    for (final range in merged) {
-      if (range.start > cursor) {
-        spans.add(TextSpan(text: body.substring(cursor, range.start)));
-      }
-      final recognizer = TapGestureRecognizer()
-        ..onTap = () => widget.onHighlightTap(widget.clause);
-      _recognizers.add(recognizer);
-      spans.add(
-        TextSpan(
-          text: body.substring(range.start, range.end),
-          style: TextStyle(
-            backgroundColor: color.withValues(alpha: 0.2),
-            decoration: TextDecoration.underline,
-            decorationColor: color.withValues(alpha: 0.5),
-            decorationThickness: 2,
-          ),
-          recognizer: recognizer,
-        ),
-      );
-      cursor = range.end;
-    }
-    if (cursor < body.length) {
-      spans.add(TextSpan(text: body.substring(cursor)));
-    }
-    return spans;
-  }
-
-  Color? _riskColor(
-    RiskLevel? risk, {
-    required bool hasHighlight,
-  }) {
-    return hasHighlight ? ResultPalette.riskBlue : null;
-  }
-}
-
-// 요약 카드(옵션 표시).
-class ResultSummaryCard extends StatelessWidget {
-  final bool isDark;
-  final List<ResultSummarySpan> spans;
-  final VoidCallback onClose;
-  final VoidCallback onAction;
-
-  const ResultSummaryCard({
-    super.key,
-    required this.isDark,
-    required this.spans,
-    required this.onClose,
-    required this.onAction,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textColor = isDark ? Colors.white : ResultPalette.textHeader;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: isDark ? ResultPalette.cardDark : ResultPalette.cardLight,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white12 : ResultPalette.cardBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 24,
-            offset: const Offset(0, -8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: ResultPalette.primary.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.psychology,
-                  size: 20,
-                  color: ResultPalette.primary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'AI 분석 요약',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: textColor,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: onClose,
-                icon: const Icon(Icons.close),
-                color: isDark ? Colors.white54 : ResultPalette.textMuted,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text.rich(
-            TextSpan(
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.6,
-                color: isDark ? Colors.grey.shade300 : ResultPalette.textBody,
-              ),
-              children: [
-                for (final span in spans)
-                  TextSpan(
-                    text: span.text,
-                    style: TextStyle(
-                      fontWeight: span.isBold
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: span.textColor ??
-                          (isDark ? Colors.white : ResultPalette.textHeader),
-                      decoration: span.underlineColor != null
-                          ? TextDecoration.underline
-                          : TextDecoration.none,
-                      decorationColor: span.underlineColor,
-                      decorationThickness: 1.4,
-                    ),
-                  ),
-              ],
-            ),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: onAction,
-              icon: const Icon(Icons.chevron_right, size: 18),
-              label: const Text(
-                '자세히 보기',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: ResultPalette.primary,
-                foregroundColor: Colors.white,
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                elevation: 6,
-                shadowColor: ResultPalette.primary.withValues(alpha: 0.2),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 Future<void> _openDetail(
   BuildContext context,
   String? analysisId,
@@ -1820,6 +1682,10 @@ Future<void> _openDetail(
         _stringFromMap(decoded['landlord_argument']) ?? '';
     final compromiseQuote =
         _stringFromMap(decoded['compromise_quote']) ?? '';
+    final draftText = _stringFromMap(decoded['draft_text']) ??
+        _stringFromMap(decoded['draftText']);
+    final questions = _parseDetailQuestions(decoded['questions']);
+    final alternatives = _parseDetailAlternatives(decoded['alternatives']);
     final tenantTags = _stringListFrom(decoded['tenant_tags']);
     final landlordTags = _stringListFrom(decoded['landlord_tags']);
     final negotiationPoints = _stringListFrom(decoded['negotiation_points']);
@@ -1843,6 +1709,9 @@ Future<void> _openDetail(
           landlordTags: landlordTags,
           negotiationPoints: negotiationPoints,
           compromiseQuote: compromiseQuote,
+          questions: questions,
+          draftText: draftText,
+          alternatives: alternatives,
         ),
       ),
     );
@@ -1882,7 +1751,13 @@ Future<Map<String, dynamic>> _fetchClauseDetail(
         'timeout=${timeoutPerAttempt.inSeconds}s',
       );
       final response = await http.get(uri).timeout(timeoutPerAttempt);
-      final body = utf8.decode(response.bodyBytes);
+      final body = utf8.decode(response.bodyBytes, allowMalformed: true);
+      debugPrint('[result] detail headers=${response.headers}');
+      debugPrint('[result] detail bytesLen=${response.bodyBytes.length}');
+      debugPrint('[result] detail utf8=${_logPreview(body)}');
+      debugPrint(
+        '[result] detail latin1=${_logPreview(latin1.decode(response.bodyBytes, allowInvalid: true))}',
+      );
       debugPrint(
         '[result] detail response status=${response.statusCode} '
         'length=${body.length} attempt=$attempt',
@@ -1974,28 +1849,56 @@ List<ResultSummarySpan> _buildClauseSummarySpans(
   final tenantArgument = _sanitizeArgument(decoded['tenant_argument']);
   final landlordArgument = _sanitizeArgument(decoded['landlord_argument']);
   final compromiseQuote = _sanitizeArgument(decoded['compromise_quote']);
+  final riskReason = _sanitizeArgument(decoded['risk_reason']);
+  final clauseText = _stringFromMap(decoded['clause_text']);
   final negotiationPoints = _stringListFrom(decoded['negotiation_points']);
 
   final parts = <String>[];
-  if (tenantArgument != null) {
-    parts.add(tenantArgument);
+  final sanitizedTenant = _cleanMojibakeLike(tenantArgument);
+  final sanitizedLandlord = _cleanMojibakeLike(landlordArgument);
+  final sanitizedCompromise = _cleanMojibakeLike(compromiseQuote);
+  final sanitizedNegotiations = negotiationPoints
+      .map(_cleanMojibakeLike)
+      .whereType<String>()
+      .toList(growable: false);
+
+  if (sanitizedTenant != null) {
+    parts.add(sanitizedTenant);
   }
-  if (landlordArgument != null) {
-    parts.add(landlordArgument);
+  if (sanitizedLandlord != null) {
+    parts.add(sanitizedLandlord);
   }
   if (negotiationPoints.isNotEmpty) {
-    parts.add(negotiationPoints.join(' · '));
+    if (sanitizedNegotiations.isNotEmpty) {
+      parts.add(sanitizedNegotiations.join(' · '));
+    }
   }
-  if (compromiseQuote != null) {
-    parts.add(compromiseQuote);
+  if (sanitizedCompromise != null) {
+    parts.add(sanitizedCompromise);
   }
 
   if (parts.isEmpty) {
+    final fallback = _cleanMojibakeLike(riskReason) ??
+        _cleanMojibakeLike(clauseText);
+    if (fallback != null) {
+      final cleaned = ResultViewModel._cleanSummaryText(fallback);
+      if (cleaned != null && cleaned.isNotEmpty) {
+        return [ResultSummarySpan(cleaned)];
+      }
+    }
     return const [ResultSummarySpan('해당 조항 요약을 불러올 수 없습니다.')];
   }
 
   final cleaned = ResultViewModel._cleanSummaryText(parts.join(' '));
   if (cleaned == null || cleaned.isEmpty) {
+    final fallback = _cleanMojibakeLike(riskReason) ??
+        _cleanMojibakeLike(clauseText);
+    if (fallback != null) {
+      final cleanedFallback = ResultViewModel._cleanSummaryText(fallback);
+      if (cleanedFallback != null && cleanedFallback.isNotEmpty) {
+        return [ResultSummarySpan(cleanedFallback)];
+      }
+    }
     return const [ResultSummarySpan('해당 조항 요약을 불러올 수 없습니다.')];
   }
   return [ResultSummarySpan(cleaned)];
@@ -2006,7 +1909,8 @@ String? _sanitizeArgument(dynamic value) {
   if (raw == null) {
     return null;
   }
-  final trimmed = raw.trim();
+  final repaired = _repairMojibake(raw);
+  final trimmed = repaired.trim();
   final jsonCandidate = _extractJsonObject(trimmed);
   if (jsonCandidate != null) {
     try {
@@ -2014,18 +1918,18 @@ String? _sanitizeArgument(dynamic value) {
       if (decoded is Map<String, dynamic>) {
         final rationale = _stringFromMap(decoded['rationale']);
         if (rationale != null && rationale.isNotEmpty) {
-          return rationale;
+          return _repairMojibake(rationale);
         }
         final text = _stringFromMap(decoded['text']);
         if (text != null && text.isNotEmpty) {
-          return text;
+          return _repairMojibake(text);
         }
       }
     } catch (_) {
       // Fall through to raw text.
     }
   }
-  return raw;
+  return trimmed;
 }
 
 String? _extractJsonObject(String value) {
@@ -2035,6 +1939,89 @@ String? _extractJsonObject(String value) {
     return null;
   }
   return value.substring(start, end + 1);
+}
+
+String _repairMojibake(String value) {
+  if (value.isEmpty) {
+    return value;
+  }
+  String candidate;
+  try {
+    candidate = utf8.decode(
+      latin1.encode(value),
+      allowMalformed: true,
+    );
+  } catch (_) {
+    return value;
+  }
+  if (candidate == value) {
+    return value;
+  }
+  final originalKorean = _koreanScore(value);
+  final candidateKorean = _koreanScore(candidate);
+  final originalMojibake = _mojibakeScore(value);
+  final candidateMojibake = _mojibakeScore(candidate);
+
+  final improvesKorean = candidateKorean >= originalKorean &&
+      (candidateKorean > 0 || originalKorean == 0);
+  final reducesMojibake = candidateMojibake < originalMojibake;
+
+  if (improvesKorean && reducesMojibake) {
+    return candidate;
+  }
+  if (candidateKorean > originalKorean &&
+      candidateKorean >= (value.length * 0.15).ceil()) {
+    return candidate;
+  }
+  return value;
+}
+
+int _koreanScore(String value) {
+  var count = 0;
+  for (var i = 0; i < value.length; i++) {
+    final code = value.codeUnitAt(i);
+    if ((code >= 0xAC00 && code <= 0xD7A3) ||
+        (code >= 0x1100 && code <= 0x11FF) ||
+        (code >= 0x3130 && code <= 0x318F)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+int _mojibakeScore(String value) {
+  var count = 0;
+  for (var i = 0; i < value.length; i++) {
+    final code = value.codeUnitAt(i);
+    if (code == 0xFFFD) {
+      count += 3;
+      continue;
+    }
+    if (code >= 0x00C0 && code <= 0x00FF) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+String? _cleanMojibakeLike(String? value) {
+  if (value == null) {
+    return null;
+  }
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  final mojibakeScore = _mojibakeScore(trimmed);
+  if (mojibakeScore == 0) {
+    return trimmed;
+  }
+  final koreanScore = _koreanScore(trimmed);
+  final ratio = mojibakeScore / trimmed.length;
+  if (koreanScore == 0 && ratio >= 0.08) {
+    return null;
+  }
+  return trimmed;
 }
 
 String? _stringFromMap(dynamic value) {
@@ -2064,3 +2051,83 @@ List<String> _stringListFrom(dynamic value) {
   return [single];
 }
 
+List<DetailQuestion> _parseDetailQuestions(dynamic value) {
+  if (value is! List) {
+    return const [];
+  }
+  final questions = <DetailQuestion>[];
+  for (final item in value) {
+    String? title;
+    String? hint;
+    if (item is Map<String, dynamic>) {
+      title = _stringFromMap(item['title']) ??
+          _stringFromMap(item['question']) ??
+          _stringFromMap(item['q']) ??
+          _stringFromMap(item['text']);
+      hint = _stringFromMap(item['hint']) ??
+          _stringFromMap(item['reason']) ??
+          _stringFromMap(item['why']) ??
+          _stringFromMap(item['guide']);
+    } else if (item is String) {
+      title = item.trim();
+      hint = '';
+    }
+    if (title == null || title.isEmpty) {
+      continue;
+    }
+    questions.add(
+      DetailQuestion(
+        title: title,
+        hint: hint ?? '',
+      ),
+    );
+  }
+  return questions;
+}
+
+List<DetailAlternative> _parseDetailAlternatives(dynamic value) {
+  if (value is! List) {
+    return const [];
+  }
+  final alternatives = <DetailAlternative>[];
+  for (var i = 0; i < value.length; i++) {
+    final item = value[i];
+    if (item is! Map<String, dynamic>) {
+      continue;
+    }
+    final label = _stringFromMap(item['label']) ??
+        _stringFromMap(item['title']) ??
+        _stringFromMap(item['name']);
+    final text =
+        _stringFromMap(item['text']) ?? _stringFromMap(item['content']);
+    if (text == null || text.isEmpty) {
+      continue;
+    }
+    final resolvedLabel = label?.trim().isNotEmpty == true
+        ? label!.trim()
+        : '옵션 ${String.fromCharCode('A'.codeUnitAt(0) + i)}';
+    final grade = _gradeFromAlternativeLabel(resolvedLabel, i);
+    alternatives.add(
+      DetailAlternative(
+        grade: grade,
+        title: resolvedLabel,
+        text: text,
+      ),
+    );
+  }
+  return alternatives;
+}
+
+String _gradeFromAlternativeLabel(String label, int index) {
+  final upper = label.toUpperCase();
+  if (upper.contains('A')) {
+    return 'A';
+  }
+  if (upper.contains('B')) {
+    return 'B';
+  }
+  if (upper.contains('C')) {
+    return 'C';
+  }
+  return String.fromCharCode('A'.codeUnitAt(0) + index);
+}
