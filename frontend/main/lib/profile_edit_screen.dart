@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'shared/color_compat.dart';
 import 'user_session.dart';
 
 class ProfileEditPalette {

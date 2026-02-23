@@ -10,11 +10,14 @@ import '../login_screen.dart';
 import '../loading.dart';
 import '../profile_edit_screen.dart';
 import '../result.dart';
-import '../shared/color_compat.dart';
 import '../signup_screen.dart';
 import '../user_session.dart';
 import '../welcome_screen.dart';
 import 'history_screen.dart';
+import 'security.dart';
+import 'service_center.dart';
+import 'system.dart';
+import 'guide.dart';
 import 'upload_screen.dart';
 
 class SettingsPalette {
@@ -507,6 +510,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late Future<_ProfileData?> _profileFuture;
   bool _notificationsEnabled = true;
   _RiskLevel _riskLevel = _RiskLevel.medium;
+  String _systemModeLabel = '시스템 설정';
 
   @override
   void initState() {
@@ -579,6 +583,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _openSystemSettings(BuildContext context) async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const SystemScreen()),
+    );
+    if (!mounted || result == null || result.isEmpty) {
+      return;
+    }
+    setState(() {
+      _systemModeLabel = result;
+    });
+  }
+
   String _riskLevelLabel(_RiskLevel level) {
     switch (level) {
       case _RiskLevel.low:
@@ -622,8 +638,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: Text(
                       _riskLevelLabel(level),
                       style: TextStyle(
-                        color:
-                            isDark ? Colors.white : SettingsPalette.textDark,
+                        color: isDark ? Colors.white : SettingsPalette.textDark,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -696,271 +711,353 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Container(
                   decoration: const BoxDecoration(color: Colors.transparent),
                   child: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            Positioned(
-              top: -50,
-              right: -50,
-              child: _Blob(
-                size: 240,
-                color: SettingsPalette.primary.withValues(alpha: 0.2),
-              ),
-            ),
-            Positioned(
-              top: 260,
-              left: -80,
-              child: _Blob(
-                size: 300,
-                color: const Color(0xFFFFC392).withValues(alpha: 0.35),
-              ),
-            ),
-            Positioned(
-              bottom: -40,
-              right: -100,
-              child: _Blob(
-                size: 260,
-                color: SettingsPalette.primary.withValues(alpha: 0.12),
-              ),
-            ),
-            FutureBuilder<_ProfileData?>(
-              future: _profileFuture,
-              builder: (context, snapshot) {
-                final profile = snapshot.data;
-                final displayName = profile?.name ?? 'User';
-                final displayEmail = profile?.email ?? (_email ?? '');
-                return Column(
-                  children: [
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '설정',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white
-                                      : SettingsPalette.textDark,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(width: 40, height: 40),
-                            ],
+                    bottom: false,
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          top: -50,
+                          right: -50,
+                          child: _Blob(
+                            size: 240,
+                            color: SettingsPalette.primary.withValues(
+                              alpha: 0.2,
+                            ),
                           ),
-                          const SizedBox(height: 20),
-                          _GlassCard(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        ),
+                        Positioned(
+                          top: 260,
+                          left: -80,
+                          child: _Blob(
+                            size: 300,
+                            color: const Color(
+                              0xFFFFC392,
+                            ).withValues(alpha: 0.35),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: -40,
+                          right: -100,
+                          child: _Blob(
+                            size: 260,
+                            color: SettingsPalette.primary.withValues(
+                              alpha: 0.12,
+                            ),
+                          ),
+                        ),
+                        FutureBuilder<_ProfileData?>(
+                          future: _profileFuture,
+                          builder: (context, snapshot) {
+                            final profile = snapshot.data;
+                            final displayName = profile?.name ?? 'User';
+                            final displayEmail =
+                                profile?.email ?? (_email ?? '');
+                            return Column(
                               children: [
-                                Row(
-                                  children: [
-                                    _ProfileAvatar(
-                                      initials: displayName,
-                                      isDark: isDark,
+                                Expanded(
+                                  child: ListView(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      16,
+                                      20,
+                                      120,
                                     ),
-                                    const SizedBox(width: 12),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          displayName,
-                                          style: TextStyle(
-                                            color: isDark
-                                                ? Colors.white
-                                                : SettingsPalette.textDark,
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        SizedBox(
-                                          width: 150,
-                                          child: Text(
-                                            displayEmail,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            '설정',
                                             style: TextStyle(
                                               color: isDark
-                                                  ? const Color(0xFF9CA3AF)
-                                                  : SettingsPalette.textMuted,
-                                              fontSize: 12,
+                                                  ? Colors.white
+                                                  : SettingsPalette.textDark,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 40, height: 40),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _GlassCard(
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                _ProfileAvatar(
+                                                  initials: displayName,
+                                                  isDark: isDark,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      displayName,
+                                                      style: TextStyle(
+                                                        color: isDark
+                                                            ? Colors.white
+                                                            : SettingsPalette
+                                                                  .textDark,
+                                                        fontSize: 17,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    SizedBox(
+                                                      width: 150,
+                                                      child: Text(
+                                                        displayEmail,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          color: isDark
+                                                              ? const Color(
+                                                                  0xFF9CA3AF,
+                                                                )
+                                                              : SettingsPalette
+                                                                    .textMuted,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            TextButton(
+                                              onPressed: () async {
+                                                final updated =
+                                                    await Navigator.of(
+                                                      context,
+                                                    ).push<bool>(
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            const ProfileEditScreen(),
+                                                      ),
+                                                    );
+                                                if (updated == true &&
+                                                    mounted) {
+                                                  setState(() {
+                                                    final email = _email;
+                                                    if (email != null &&
+                                                        email.isNotEmpty) {
+                                                      _profileFuture =
+                                                          _fetchProfile(email);
+                                                    }
+                                                  });
+                                                }
+                                              },
+                                              style: TextButton.styleFrom(
+                                                foregroundColor: const Color(
+                                                  0xFF2563EB,
+                                                ),
+                                                backgroundColor: isDark
+                                                    ? const Color(0xFF1E293B)
+                                                    : const Color(0xFFEFF6FF),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 6,
+                                                    ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                '관리',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (snapshot.hasError)
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            8,
+                                            12,
+                                            8,
+                                            0,
+                                          ),
+                                          child: Text(
+                                            '프로필을 불러오지 못했습니다: ${snapshot.error}',
+                                            style: const TextStyle(
+                                              color: Color(0xFFDC2626),
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700,
                                             ),
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                TextButton(
-                                  onPressed: () async {
-                                    final updated = await Navigator.of(context)
-                                        .push<bool>(
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                const ProfileEditScreen(),
-                                          ),
-                                        );
-                                    if (updated == true && mounted) {
-                                      setState(() {
-                                        final email = _email;
-                                        if (email != null && email.isNotEmpty) {
-                                          _profileFuture = _fetchProfile(email);
-                                        }
-                                      });
-                                    }
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: const Color(0xFF2563EB),
-                                    backgroundColor: isDark
-                                        ? const Color(0xFF1E293B)
-                                        : const Color(0xFFEFF6FF),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 6,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
+                                      const SizedBox(height: 24),
+                                      const _SectionHeader(label: '일반'),
+                                      _GlassCard(
+                                        child: Column(
+                                          children: [
+                                            _SettingsToggleTile(
+                                              icon: Icons.notifications,
+                                              iconColor:
+                                                  SettingsPalette.primary,
+                                              iconBg: isDark
+                                                  ? const Color(0xFF3B2F1E)
+                                                  : const Color(0xFFFFEDD5),
+                                              label: '알림',
+                                              value: _notificationsEnabled,
+                                              onChanged: (value) {
+                                                setState(() {
+                                                  _notificationsEnabled = value;
+                                                });
+                                              },
+                                            ),
+                                            _SettingsTile(
+                                              icon: Icons.dark_mode,
+                                              iconColor: const Color(
+                                                0xFF64748B,
+                                              ),
+                                              iconBg: isDark
+                                                  ? const Color(0xFF1F2937)
+                                                  : const Color(0xFFF1F5F9),
+                                              label: '시스템 설정',
+                                              trailingLabel: _systemModeLabel,
+                                              isLast: true,
+                                              onTap: () {
+                                                _openSystemSettings(context);
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      const _SectionHeader(label: '검토 설정'),
+                                      _GlassCard(
+                                        child: Column(
+                                          children: [
+                                            _SettingsTile(
+                                              icon: Icons.menu_book,
+                                              iconColor: const Color(
+                                                0xFF10B981,
+                                              ),
+                                              iconBg: isDark
+                                                  ? const Color(0xFF064E3B)
+                                                  : const Color(0xFFD1FAE5),
+                                                label: '위험 감수 수준',
+                                                trailingLabel: _riskLevelLabel(
+                                                  _riskLevel,
+                                                ),
+                                                onTap: _showRiskLevelPicker,
+                                                isLast: true,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      const _SectionHeader(label: '참고 자료'),
+                                      _GlassCard(
+                                        child: Column(
+                                          children: [
+                                              _SettingsTile(
+                                                icon: Icons.security,
+                                                iconColor: const Color.fromARGB(
+                                                  255,
+                                                  37,
+                                                  37,
+                                                  138,
+                                                ),
+                                                iconBg: isDark
+                                                    ? const Color(0xFF312E81)
+                                                    : const Color(0xFFE0E7FF),
+
+                                                label: '계약 전 행동 가이드',
+                                                isLast: true,
+                                                onTap: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          const GuideScreen(),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      const _SectionHeader(label: '계정 및 지원'),
+                                      _GlassCard(
+                                        child: Column(
+                                          children: [
+                                              _SettingsTile(
+                                                icon: Icons.support_agent,
+                                                iconColor: const Color(
+                                                  0xFF64748B,
+                                                ),
+                                                iconBg: isDark
+                                                    ? const Color(0xFF1F2937)
+                                                    : const Color(0xFFF1F5F9),
+                                                label: '고객센터',
+                                                onTap: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          const ServiceCenterScreen(),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                              _SettingsTile(
+                                                icon: Icons.policy,
+                                                iconColor: const Color(
+                                                  0xFF64748B,
+                                                ),
+                                                iconBg: isDark
+                                                    ? const Color(0xFF1F2937)
+                                                    : const Color(0xFFF1F5F9),
+                                                label: '개인정보 처리방침',
+                                                onTap: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          const SecurityScreen(),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            _SettingsLogoutTile(
+                                              onLogout: _handleLogout,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _DisclaimerCard(isDark: isDark),
+                                      const SizedBox(height: 20),
+                                      const _AppVersionFooter(),
+                                    ],
                                   ),
-                                  child: const Text(
-                                    '관리',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                                ),
+                                _SettingsBottomNav(
+                                  onHomeTap: _goHomeFromBottomNav,
+                                  onHistoryTap: _goHistoryFromBottomNav,
+                                  onCameraTap: _openCaptureOptionsFromBottomNav,
                                 ),
                               ],
-                            ),
-                          ),
-                          if (snapshot.hasError)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-                              child: Text(
-                                '프로필을 불러오지 못했습니다: ${snapshot.error}',
-                                style: const TextStyle(
-                                  color: Color(0xFFDC2626),
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 24),
-                          const _SectionHeader(label: '일반'),
-                          _GlassCard(
-                            child: Column(
-                              children: [
-                                _SettingsToggleTile(
-                                  icon: Icons.notifications,
-                                  iconColor: SettingsPalette.primary,
-                                  iconBg: isDark
-                                      ? const Color(0xFF3B2F1E)
-                                      : const Color(0xFFFFEDD5),
-                                  label: '알림',
-                                  value: _notificationsEnabled,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _notificationsEnabled = value;
-                                    });
-                                  },
-                                ),
-                                _SettingsTile(
-                                  icon: Icons.language,
-                                  iconColor: const Color(0xFF2563EB),
-                                  iconBg: isDark
-                                      ? const Color(0xFF1E293B)
-                                      : const Color(0xFFDBEAFE),
-                                  label: '언어',
-                                  trailingLabel: '한국어',
-                                ),
-                                _SettingsTile(
-                                  icon: Icons.dark_mode,
-                                  iconColor: const Color(0xFF64748B),
-                                  iconBg: isDark
-                                      ? const Color(0xFF1F2937)
-                                      : const Color(0xFFF1F5F9),
-                                  label: '화면 모드',
-                                  trailingLabel: '시스템 설정',
-                                  isLast: true,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const _SectionHeader(label: '검토 설정'),
-                          _GlassCard(
-                            child: Column(
-                              children: [
-                                _SettingsTile(
-                                  icon: Icons.security,
-                                  iconColor: const Color(0xFF10B981),
-                                  iconBg: isDark
-                                      ? const Color(0xFF064E3B)
-                                      : const Color(0xFFD1FAE5),
-                                  label: '위험 감수 수준',
-                                  trailingLabel: _riskLevelLabel(_riskLevel),
-                                  onTap: _showRiskLevelPicker,
-                                ),
-                                _SettingsTile(
-                                  icon: Icons.tune,
-                                  iconColor: const Color(0xFF6366F1),
-                                  iconBg: isDark
-                                      ? const Color(0xFF312E81)
-                                      : const Color(0xFFE0E7FF),
-                                  label: '맞춤법 체크',
-                                  isLast: true,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const _SectionHeader(label: '계정 및 지원'),
-                          _GlassCard(
-                            child: Column(
-                              children: [
-                                _SettingsTile(
-                                  icon: Icons.support_agent,
-                                  iconColor: const Color(0xFF64748B),
-                                  iconBg: isDark
-                                      ? const Color(0xFF1F2937)
-                                      : const Color(0xFFF1F5F9),
-                                  label: '고객센터',
-                                ),
-                                _SettingsTile(
-                                  icon: Icons.policy,
-                                  iconColor: const Color(0xFF64748B),
-                                  iconBg: isDark
-                                      ? const Color(0xFF1F2937)
-                                      : const Color(0xFFF1F5F9),
-                                  label: '개인정보 처리방침',
-                                ),
-                                _SettingsLogoutTile(onLogout: _handleLogout),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          _DisclaimerCard(isDark: isDark),
-                          const SizedBox(height: 20),
-                          const _AppVersionFooter(),
-                        ],
-                      ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                    _SettingsBottomNav(
-                      onHomeTap: _goHomeFromBottomNav,
-                      onHistoryTap: _goHistoryFromBottomNav,
-                      onCameraTap: _openCaptureOptionsFromBottomNav,
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
                   ),
                 ),
               ),
@@ -1420,6 +1517,3 @@ class _CaptureOptionTile extends StatelessWidget {
     );
   }
 }
-
-
-

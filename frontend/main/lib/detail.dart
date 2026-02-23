@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'shared/color_compat.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
 import 'welcome_screen.dart';

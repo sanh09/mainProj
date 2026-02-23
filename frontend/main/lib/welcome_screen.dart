@@ -11,7 +11,6 @@ import 'loading.dart';
 import 'result.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
-import 'shared/color_compat.dart';
 import 'user_session.dart';
 
 class WelcomePalette {

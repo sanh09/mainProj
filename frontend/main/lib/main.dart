@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_settings.dart';
 import 'login_screen.dart';
 import 'screens/upload_screen.dart';
 import 'signup_screen.dart';
@@ -13,86 +14,98 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true),
-      home: Builder(
-        // Entry flow uses the welcome screen; auth routes are pushed from it.
-        builder: (context) => WelcomeScreen(
-          onLoginTap: (context) {
-            // Login keeps this screen on the stack so user can return.
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => LoginScreen(
-                  onLogin: () {
-                    Navigator.of(context).pop();
-                  },
-                  onSignupClick: () {
-                    // Signup sits on top of login and returns or continues.
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SignupScreen(
-                          onSignup: () {
-                            Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(
-                                builder: (_) => const UploadScreen(),
-                              ),
-                            );
-                          },
-                          onBack: () => Navigator.of(context).pop(),
-                          onLoginTap: () => Navigator.of(context).pop(),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+    return ValueListenableBuilder<double>(
+      valueListenable: AppSettings.textScale,
+      builder: (context, scale, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(useMaterial3: true),
+          builder: (context, child) {
+            final media = MediaQuery.of(context);
+            return MediaQuery(
+              data: media.copyWith(textScaler: TextScaler.linear(scale)),
+              child: child ?? const SizedBox.shrink(),
             );
           },
-          onSignupTap: (context) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SignupScreen(
-                  onSignup: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const UploadScreen()),
-                    );
-                  },
-                  onBack: () => Navigator.of(context).pop(),
-                  onLoginTap: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => LoginScreen(
-                          onLogin: () {
-                            Navigator.of(context).pop();
-                          },
-                          onSignupClick: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => SignupScreen(
-                                  onSignup: () {
-                                    Navigator.of(context).pushReplacement(
-                                      MaterialPageRoute(
-                                        builder: (_) => const UploadScreen(),
-                                      ),
-                                    );
-                                  },
-                                  onBack: () => Navigator.of(context).pop(),
-                                  onLoginTap: () => Navigator.of(context).pop(),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+          home: Builder(
+            // Entry flow uses the welcome screen; auth routes are pushed from it.
+            builder: (context) => WelcomeScreen(
+              onLoginTap: (context) {
+                // Login keeps this screen on the stack so user can return.
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => LoginScreen(
+                      onLogin: () {
+                        Navigator.of(context).pop();
+                      },
+                      onSignupClick: () {
+                        // Signup sits on top of login and returns or continues.
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SignupScreen(
+                              onSignup: () {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(
+                                    builder: (_) => const UploadScreen(),
+                                  ),
+                                );
+                              },
+                              onBack: () => Navigator.of(context).pop(),
+                              onLoginTap: () => Navigator.of(context).pop(),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+              onSignupTap: (context) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SignupScreen(
+                      onSignup: () {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const UploadScreen()),
+                        );
+                      },
+                      onBack: () => Navigator.of(context).pop(),
+                      onLoginTap: () {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) => LoginScreen(
+                              onLogin: () {
+                                Navigator.of(context).pop();
+                              },
+                              onSignupClick: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => SignupScreen(
+                                      onSignup: () {
+                                        Navigator.of(context).pushReplacement(
+                                          MaterialPageRoute(
+                                            builder: (_) => const UploadScreen(),
+                                          ),
+                                        );
+                                      },
+                                      onBack: () => Navigator.of(context).pop(),
+                                      onLoginTap: () => Navigator.of(context).pop(),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

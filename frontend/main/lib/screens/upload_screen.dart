@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../loading.dart';
 import '../result.dart';
-import '../shared/color_compat.dart';
 import '../shared/dashboard_palette.dart';
 import '../shared/history_repository.dart';
 import '../user_session.dart';

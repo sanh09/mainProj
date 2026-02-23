@@ -2,7 +2,6 @@
 
 import '../login_screen.dart';
 import '../result.dart';
-import '../shared/color_compat.dart';
 import '../signup_screen.dart';
 import '../shared/history_repository.dart';
 import '../user_session.dart';

@@ -7,7 +7,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-import 'shared/color_compat.dart';
 import 'user_session.dart';
 
 /// 로그인 화면에서 공통으로 사용하는 색상 팔레트.

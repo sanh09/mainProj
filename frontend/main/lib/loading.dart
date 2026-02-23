@@ -1,7 +1,6 @@
 ﻿import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'shared/color_compat.dart';
 
 class LoadingScreen extends StatefulWidget {
   const LoadingScreen({super.key});
