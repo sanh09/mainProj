@@ -372,7 +372,7 @@ class ResultSummaryCard extends StatelessWidget {
                   ),
               ],
             ),
-            maxLines: 3,
+            maxLines: 5,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 12),

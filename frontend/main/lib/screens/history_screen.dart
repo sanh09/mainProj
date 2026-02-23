@@ -703,7 +703,6 @@ class _HistoryBottomNav extends StatelessWidget {
             label: '기록',
             selected: true,
           ),
-          const _HistoryNavItem(icon: Icons.smart_toy_rounded, label: 'AI 상담'),
           _HistoryNavItem(
             icon: Icons.person_rounded,
             label: '마이페이지',

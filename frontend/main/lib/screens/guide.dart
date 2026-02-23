@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'profile_screen.dart';
+
 class GuidePalette {
   static const Color primary = Color(0xFFF19B22);
   static const Color primaryDark = Color(0xFFD68310);
@@ -550,15 +552,15 @@ class _BottomAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-      return Positioned(
-        left: 0,
-        right: 0,
-        bottom: 0,
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
               colors: [GuidePalette.primary, Color(0xFFF97316)],
             ),
             borderRadius: BorderRadius.circular(14),
@@ -572,7 +574,11 @@ class _BottomAction extends StatelessWidget {
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            onTap: () {},
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            },
             child: const Padding(
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Row(

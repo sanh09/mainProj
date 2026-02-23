@@ -1349,7 +1349,6 @@ class _BottomNav extends StatelessWidget {
                     );
                   },
                 ),
-                const _NavItem(icon: Icons.smart_toy_rounded, label: 'AI 상담'),
                 _NavItem(
                   icon: Icons.person_rounded,
                   label: '마이페이지',

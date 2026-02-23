@@ -410,35 +410,6 @@ class _SettingsBottomNav extends StatelessWidget {
             active: false,
             onTap: onHistoryTap,
           ),
-          GestureDetector(
-            onTap: onCameraTap,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: SettingsPalette.primary,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: SettingsPalette.primary.withValues(alpha: 0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.photo_camera_rounded,
-                color: Colors.white,
-                size: 26,
-              ),
-            ),
-          ),
-          const _BottomNavItem(
-            icon: Icons.smart_toy_rounded,
-            label: 'AI 상담',
-            active: false,
-          ),
           const _BottomNavItem(
             icon: Icons.person_rounded,
             label: '마이페이지',
