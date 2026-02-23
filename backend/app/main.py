@@ -213,16 +213,122 @@ def _build_why_check_message(risk_reason: str, clause_text: str) -> str:
     reason = (risk_reason or "").strip()
     if reason:
         return (
-            f"??議고빆? '{reason}' ?ъ쑀濡?遺꾩웳 媛?μ꽦???덉뒿?덈떎. "
-            "臾멸뎄???곸슜 踰붿쐞? 梨낆엫 湲곗???援ъ껜?곸쑝濡??뺤씤?댁빞 ?⑸땲??"
+            f"이 조항은 '{reason}' 사유로 분쟁 가능성이 있습니다. "
+            "문구의 적용 범위와 책임 기준을 구체적으로 확인해야 합니다."
         )
     text = (clause_text or "").strip()
     if text:
         return (
-            "??議고빆? 梨낆엫 踰붿쐞? 鍮꾩슜 遺??湲곗???紐⑦샇?섎㈃ 遺꾩웳?쇰줈 ?댁뼱吏????덉뒿?덈떎. "
-            "議곌굔怨??덉쇅瑜?紐낇솗???뺤씤?댁빞 ?⑸땲??"
+            "이 조항은 책임 범위와 비용 부담 기준이 모호하여 분쟁으로 이어질 수 있습니다. "
+            "조건과 예외를 명확히 확인해야 합니다."
         )
-    return "??議고빆? ?댁꽍 李⑥씠濡?遺꾩웳???앷만 ???덉쑝誘濡??곸슜 湲곗????뺤씤?댁빞 ?⑸땲??"
+    return "이 조항은 해석 차이로 분쟁이 생길 수 있으니 적용 기준을 확인해야 합니다."
+def _extract_ui_payload(detail: dict[str, Any]) -> Optional[dict[str, Any]]:
+    ui_payload = detail.get("ui_payload") or detail.get("uiPayload")
+    if isinstance(ui_payload, dict):
+        return ui_payload
+    return None
+def _extract_payload_p(ui_payload: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not isinstance(ui_payload, dict):
+        return {}
+    payload = ui_payload.get("P")
+    if isinstance(payload, dict):
+        return payload
+    if any(key in ui_payload for key in ("L1", "L2", "L3", "L4")):
+        return ui_payload
+    return {}
+def _build_question_cards(ui_payload: Optional[dict[str, Any]]) -> list[dict[str, str]]:
+    payload = _extract_payload_p(ui_payload)
+    cards: list[dict[str, str]] = []
+    l4 = payload.get("L4") if isinstance(payload, dict) else None
+    if isinstance(l4, dict):
+        for item in l4.get("questions") or []:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("q") or "").strip()
+            hint = str(item.get("reason") or "").strip()
+            if title:
+                cards.append({"title": title, "hint": hint})
+            if len(cards) >= 4:
+                return cards[:4]
+    l1 = payload.get("L1") if isinstance(payload, dict) else None
+    if isinstance(l1, dict):
+        for item in l1.get("fact_questions") or []:
+            title = str(item or "").strip()
+            if title:
+                cards.append({"title": title, "hint": "사실관계 확인"})
+            if len(cards) >= 4:
+                return cards[:4]
+    fallback = [
+        {
+            "title": "해당 조항의 적용 범위는 어디까지인가요?",
+            "hint": "발생 가능한 상황과 예외를 확인",
+        },
+        {
+            "title": "비용/책임 부담 주체는 누구인가요?",
+            "hint": "임대인·임차인 부담 구분",
+        },
+        {
+            "title": "기한·통지 요건은 명확한가요?",
+            "hint": "통지 방법/기한/효력 확인",
+        },
+        {
+            "title": "위반 시 제재 수준은 적정한가요?",
+            "hint": "손해배상/위약금 범위 확인",
+        },
+    ]
+    for item in fallback:
+        if len(cards) >= 4:
+            break
+        cards.append(item)
+    return cards[:4]
+def _build_draft_text(
+    ui_payload: Optional[dict[str, Any]], detail: dict[str, Any]
+) -> str:
+    payload = _extract_payload_p(ui_payload)
+    l3 = payload.get("L3") if isinstance(payload, dict) else None
+    if isinstance(l3, dict):
+        options = l3.get("after_options") or []
+        if isinstance(options, list) and options:
+            first = options[0] if isinstance(options[0], dict) else {}
+            text = str(first.get("text") or "").strip()
+            if text:
+                note = str(l3.get("note") or "").strip()
+                if note:
+                    return f"{text}\n\n{note}"
+                return text
+    l2 = payload.get("L2") if isinstance(payload, dict) else None
+    if isinstance(l2, dict):
+        neutral = str(l2.get("neutral_summary") or "").strip()
+        if neutral:
+            return neutral
+    return str(detail.get("why_check") or detail.get("risk_reason") or "").strip()
+def _build_alternatives(ui_payload: Optional[dict[str, Any]]) -> list[dict[str, str]]:
+    payload = _extract_payload_p(ui_payload)
+    l3 = payload.get("L3") if isinstance(payload, dict) else None
+    options = l3.get("after_options") if isinstance(l3, dict) else None
+    results: list[dict[str, str]] = []
+    if isinstance(options, list):
+        for item in options:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            text = str(item.get("text") or "").strip()
+            if label or text:
+                results.append({"label": label, "text": text})
+            if len(results) >= 3:
+                break
+    return results
+def _attach_alternatives(detail: dict[str, Any]) -> None:
+    ui_payload = _extract_ui_payload(detail)
+    if "alternatives" not in detail:
+        detail["alternatives"] = _build_alternatives(ui_payload)
+def _attach_questions_and_draft(detail: dict[str, Any]) -> None:
+    ui_payload = _extract_ui_payload(detail)
+    if "questions" not in detail:
+        detail["questions"] = _build_question_cards(ui_payload)
+    if "draft_text" not in detail:
+        detail["draft_text"] = _build_draft_text(ui_payload, detail)
 def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
     clause_text = getattr(clause, "content", None) or ""
     risk_reason = getattr(clause, "risk_reason", None) or ""
@@ -235,9 +341,9 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
     negotiation_points = getattr(clause, "negotiation_points", None) or []
     compromise_quote = getattr(clause, "compromise_quote", None) or ""
     if not tenant_argument and risk_reason:
-        tenant_argument = f"?대떦 議고빆??'{risk_reason}' 遺遺꾩뿉 ???議곗젙???꾩슂?⑸땲??"
+        tenant_argument = f"해당 조항의 '{risk_reason}' 부분은 임차인에게 과도할 수 있어 조정이 필요합니다."
     if not landlord_argument and risk_reason:
-        landlord_argument = f"?대떦 議고빆? '{risk_reason}' ?ъ쑀濡??꾩슂?⑸땲??"
+        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 임대인에게 필요합니다."
     if not tenant_tags and highlight_keywords:
         tenant_tags = list(highlight_keywords)
     if not landlord_tags and highlight_keywords:
@@ -248,7 +354,7 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
         elif risk_reason:
             negotiation_points = [risk_reason]
     if not compromise_quote and (tenant_argument or landlord_argument):
-        compromise_quote = "?곹샇 ?묒쓽?섏뿬 ?⑸━?곸씤 踰붿쐞濡?議곗젙?쒕떎."
+        compromise_quote = "상호 협의하여 합리적인 범위로 조정합니다."
     why_check = _build_why_check_message(risk_reason, clause_text)
     return {
         "clause_text": clause_text,
@@ -260,6 +366,7 @@ def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
         "negotiation_points": negotiation_points,
         "compromise_quote": compromise_quote,
         "why_check": why_check,
+        "ui_payload": getattr(clause, "ui_payload", None),
     }
 def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
     clause_text = clause.get("content") or clause.get("body") or clause.get("text") or ""
@@ -273,9 +380,9 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
     negotiation_points = clause.get("negotiation_points") or []
     compromise_quote = clause.get("compromise_quote") or ""
     if not tenant_argument and risk_reason:
-        tenant_argument = f"?대떦 議고빆??'{risk_reason}' 遺遺꾩뿉 ???議곗젙???꾩슂?⑸땲??"
+        tenant_argument = f"해당 조항의 '{risk_reason}' 부분은 임차인에게 과도할 수 있어 조정이 필요합니다."
     if not landlord_argument and risk_reason:
-        landlord_argument = f"?대떦 議고빆? '{risk_reason}' ?ъ쑀濡??꾩슂?⑸땲??"
+        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 임대인에게 필요합니다."
     if not tenant_tags and highlight_keywords:
         tenant_tags = list(highlight_keywords)
     if not landlord_tags and highlight_keywords:
@@ -286,7 +393,7 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
         elif risk_reason:
             negotiation_points = [risk_reason]
     if not compromise_quote and (tenant_argument or landlord_argument):
-        compromise_quote = "?곹샇 ?묒쓽?섏뿬 ?⑸━?곸씤 踰붿쐞濡?議곗젙?쒕떎."
+        compromise_quote = "상호 협의하여 합리적인 범위로 조정합니다."
     why_check = _build_why_check_message(risk_reason, clause_text)
     return {
         "clause_text": clause_text,
@@ -298,6 +405,7 @@ def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
         "negotiation_points": negotiation_points,
         "compromise_quote": compromise_quote,
         "why_check": why_check,
+        "ui_payload": clause.get("ui_payload") or clause.get("uiPayload"),
     }
 @app.get("/")
 def read_root():
@@ -312,7 +420,7 @@ def _get_pipeline_debate_summary(transcript: list[dict]) -> str:
     for turn in reversed(transcript):
         speaker = str(turn.get("speaker", "")).strip()
         content = str(turn.get("content", "")).strip()
-        if speaker in ("??", "judge", "???", "mediator") and content:
+        if speaker in ("판사", "judge", "중재자", "mediator") and content:
             return content
     return ""
 def _build_summary_input(result, max_clauses: int = None, max_chars: int = None) -> str:
@@ -383,7 +491,7 @@ async def analyze_file(
                 except Exception:
                     pass
         raw_text = (result.raw_text or "").strip()
-        if raw_text == "api?꾩슂":
+        if raw_text == "api필요":
             raise HTTPException(
                 status_code=503,
                 detail="Document extraction failed: OPENAI_API_KEY is missing.",
@@ -664,6 +772,8 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
         debate_ui_payload = _build_debate_ui_payload()
         detail.update(debate_payload)
         detail["debate_ui"] = debate_ui_payload
+        _attach_questions_and_draft(detail)
+        _attach_alternatives(detail)
         return UTF8JSONResponse(content=detail)
     except HTTPException as exc:
         if exc.status_code != 404:
@@ -733,6 +843,8 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 debate_ui_payload = _build_debate_ui_payload()
                 detail.update(debate_payload)
                 detail["debate_ui"] = debate_ui_payload
+                _attach_questions_and_draft(detail)
+                _attach_alternatives(detail)
                 return UTF8JSONResponse(content=detail)
         for clause in clauses:
             if isinstance(clause, dict) and matches(clause):
@@ -743,6 +855,8 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 debate_ui_payload = _build_debate_ui_payload()
                 detail.update(debate_payload)
                 detail["debate_ui"] = debate_ui_payload
+                _attach_questions_and_draft(detail)
+                _attach_alternatives(detail)
                 return UTF8JSONResponse(content=detail)
         raise HTTPException(status_code=404, detail="Clause not found")
     except HTTPException:

@@ -62,7 +62,7 @@ def main() -> int:
     max_chars = int(os.getenv("SUMMARY_MAX_CHARS", "6000"))
 
     summarizer = LLMSummarizer()
-    if summarizer.api_key == "api?꾩슂":
+    if summarizer.api_key == "api필요":
         print("OPENAI_API_KEY is missing.")
         return 1
 

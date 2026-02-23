@@ -53,7 +53,7 @@ def _build_law_text(row: dict) -> str:
 def backfill_precedents(limit: int, dry_run: bool = False, fill_vec: bool = False) -> int:
     ensure_precedent_tables()
     embedder = EmbeddingManager()
-    if not fill_vec and embedder.api_key == "api???":
+    if not fill_vec and embedder.api_key == "api필요":
         print("OPENAI_API_KEY is missing.")
         return 0
     conn = _get_db_conn()
@@ -106,7 +106,7 @@ def backfill_precedents(limit: int, dry_run: bool = False, fill_vec: bool = Fals
             if not text:
                 continue
             embedding = embedder.generate_embedding(text)
-            if embedding == "api???":
+            if embedding == "api필요":
                 break
             if not dry_run:
                 cur.execute(
@@ -131,7 +131,7 @@ def backfill_precedents(limit: int, dry_run: bool = False, fill_vec: bool = Fals
 def backfill_laws(limit: int, dry_run: bool = False, fill_vec: bool = False) -> int:
     ensure_law_tables()
     embedder = EmbeddingManager()
-    if not fill_vec and embedder.api_key == "api???":
+    if not fill_vec and embedder.api_key == "api필요":
         print("OPENAI_API_KEY is missing.")
         return 0
     conn = _get_db_conn()
@@ -184,7 +184,7 @@ def backfill_laws(limit: int, dry_run: bool = False, fill_vec: bool = False) -> 
             if not text:
                 continue
             embedding = embedder.generate_embedding(text)
-            if embedding == "api???":
+            if embedding == "api필요":
                 break
             if not dry_run:
                 cur.execute(

@@ -8,7 +8,7 @@ class LLMSummarizer:
         self.model = model or os.getenv("OPENAI_SUMMARY_MODEL") or "o4-mini"
         self.report_model = os.getenv("OPENAI_REPORT_MODEL") or self.model
         self.api_key = os.getenv("OPENAI_API_KEY") or "api필요"
-        self._client = self._build_client() if self.api_key != "api??" else None
+        self._client = self._build_client() if self.api_key != "api필요" else None
 
     def _build_client(self):
         try:
@@ -18,8 +18,8 @@ class LLMSummarizer:
         return OpenAI(api_key=self.api_key)
 
     def generate_summary(self, text: str) -> str:
-        if self.api_key == "api??":
-            return "api??"
+        if self.api_key == "api필요":
+            return "api필요"
         prompt = (
             "Summarize the contract clauses concisely, focusing on key obligations and risks. "
             "Respond in Korean."
@@ -36,8 +36,8 @@ class LLMSummarizer:
         return content
 
     def generate_comprehensive_report(self, text: str) -> str:
-        if self.api_key == "api??":
-            return "api??"
+        if self.api_key == "api필요":
+            return "api필요"
         prompt = (
             "Create a comprehensive report with sections: overview, key clauses, risks, and recommendations. "
             "Respond in Korean."
@@ -54,13 +54,13 @@ class LLMSummarizer:
         return content
 
     def generate_debate_summary(self, text: str) -> str:
-        if self.api_key == "api??":
-            return "api??"
+        if self.api_key == "api필요":
+            return "api필요"
         prompt = (
             "Summarize the debate with three labeled sections in Korean:\n"
-            "??? ?? 2-3 bullets\n"
-            "??? ?? 2-3 bullets\n"
-            "??(??) ?? 2-3 bullets (?? ??/?? ??? ??)\n"
+            "임대인 입장 2-3 bullets\n"
+            "임차인 입장 2-3 bullets\n"
+            "중재(판사) 요약 2-3 bullets (공통점/쟁점 구분)\n"
             "Use the exact section labels and keep each bullet concise."
         )
         response = self._client.chat.completions.create(
@@ -75,11 +75,11 @@ class LLMSummarizer:
         return content
 
     def generate_overall_debate_summary(self, text: str) -> str:
-        if self.api_key == "api??":
-            return "api??"
+        if self.api_key == "api필요":
+            return "api필요"
         prompt = (
             "Summarize the clause-level debate summaries into a single concise report. "
-            "Include: ?? ??, ?? ??, ?? ???, ?? ??. "
+            "Include: 주요 쟁점, 공통점, 임대인/임차인 주장, 합의/권고. "
             "Respond in Korean and keep it brief (6-10 bullets)."
         )
         response = self._client.chat.completions.create(
@@ -94,8 +94,8 @@ class LLMSummarizer:
         return content
 
     def generate_clause_ui_payload(self, text: str) -> dict:
-        if self.api_key == "api??":
-            return {"error": "api??"}
+        if self.api_key == "api필요":
+            return {"error": "api필요"}
         prompt = (
             "You are generating a structured UI payload for a risky clause analysis. "
             "If a debate transcript is included in the input, use it as the primary source and summarize the debate outcome. "
@@ -135,10 +135,10 @@ class LLMSummarizer:
         laws: list[str],
         debate_snippet: str = "",
     ) -> dict:
-        if self.api_key == "api??":
-            return {"error": "api??"}
-        ref_precedents = "\n".join(f"- {p}" for p in precedents) if precedents else "- ??"
-        ref_laws = "\n".join(f"- {l}" for l in laws) if laws else "- ??"
+        if self.api_key == "api필요":
+            return {"error": "api필요"}
+        ref_precedents = "\n".join(f"- {p}" for p in precedents) if precedents else "- 없음"
+        ref_laws = "\n".join(f"- {l}" for l in laws) if laws else "- 없음"
 
         system_prompt = (
             "You are drafting neutral, non-judgmental guidance for a rental contract clause. "
@@ -160,24 +160,24 @@ class LLMSummarizer:
             "  \"L3\": {\n"
             "    \"before\": \"short excerpt or concise paraphrase of the clause\",\n"
             "    \"after_options\": [\n"
-            "      {\"label\": \"?? A\", \"text\": \"...\"},\n"
-            "      {\"label\": \"?? B\", \"text\": \"...\"},\n"
-            "      {\"label\": \"?? C\", \"text\": \"...\"}\n"
+            "      {\"label\": \"옵션 A\", \"text\": \"...\"},\n"
+            "      {\"label\": \"옵션 B\", \"text\": \"...\"},\n"
+            "      {\"label\": \"옵션 C\", \"text\": \"...\"}\n"
             "    ],\n"
-            "    \"note\": \"?? ???? ??? ???/??? ???? ??\"\n"
+            "    \"note\": \"범위 제안이며 구체 문구는 협의 필요\"\n"
             "  },\n"
             "  \"L4\": {\n"
-            "    \"why\": \"?? ??? ???\",\n"
+            "    \"why\": \"확인 필요 이유\",\n"
             "    \"questions\": [\n"
-            "      {\"q\": \"?? ??? ??\", \"reason\": \"?? ???? ??\"},\n"
-            "      {\"q\": \"?? ??? ??\", \"reason\": \"?? ???? ??\"}\n"
+            "      {\"q\": \"확인 질문\", \"reason\": \"질문 이유\"},\n"
+            "      {\"q\": \"추가 확인 질문\", \"reason\": \"추가 확인 이유\"}\n"
             "    ]\n"
             "  }\n"
             "}\n"
             "Constraints:\n"
             "- L1 why_check: 2-3 lines, neutral, non-definitive.\n"
             "- L1 fact_questions: 1-2 items, factual.\n"
-            "- L2: use '??? ??' tone, avoid judgments.\n"
+            "- L2: use '가능 주장' tone, avoid judgments.\n"
             "- L3: provide options A/B/C as ranges, not fixed edits.\n"
             "- L4: why -> questions with reasons (no drafts).\n"
             "- L4 questions/reasons must focus on the problematic or unclear points in the clause.\n"
@@ -195,7 +195,7 @@ class LLMSummarizer:
             f"Clause text:\n{clause_text}\n\n"
             f"Related precedents:\n{ref_precedents}\n\n"
             f"Related laws:\n{ref_laws}\n\n"
-            f"Debate snippet (if any):\n{debate_snippet or '- ??'}\n"
+            f"Debate snippet (if any):\n{debate_snippet or '- 없음'}\n"
         )
 
         response = self._client.chat.completions.create(
