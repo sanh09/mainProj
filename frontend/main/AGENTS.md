@@ -3,7 +3,7 @@
 This repository is a Flutter app for the CanSi frontend.
 Use this guide for build/lint/test commands and local coding conventions.
 If anything conflicts with repo files, follow the repo files.
-ë„ˆ flutter ê°œ ì˜í•˜ëŠ” ì‚¬ëŒì´ì•¼
+³Ê flutter °³ ÀßÇÏ´Â »ç¶÷ÀÌ¾ß
 
 ## Quick Start
 - Install Flutter SDK matching `pubspec.yaml` SDK constraint.
