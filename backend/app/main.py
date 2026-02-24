@@ -192,9 +192,14 @@ def _normalize_clause_key(value: Optional[str]) -> str:
     normalized = normalized.replace("\u3000", "")
     return normalized.lower()
 def _clause_matches(clause: Any, raw_id: str, normalized_target: str) -> bool:
-    clause_id = getattr(clause, "id", None)
-    article_num = getattr(clause, "article_num", None)
-    title = getattr(clause, "title", None)
+    if isinstance(clause, dict):
+        clause_id = clause.get("id")
+        article_num = clause.get("article_num")
+        title = clause.get("title")
+    else:
+        clause_id = getattr(clause, "id", None)
+        article_num = getattr(clause, "article_num", None)
+        title = getattr(clause, "title", None)
     if clause_id and str(clause_id) == raw_id:
         return True
     if article_num and str(article_num) == raw_id:
@@ -329,84 +334,79 @@ def _attach_questions_and_draft(detail: dict[str, Any]) -> None:
         detail["questions"] = _build_question_cards(ui_payload)
     if "draft_text" not in detail:
         detail["draft_text"] = _build_draft_text(ui_payload, detail)
+def _build_clause_detail(
+    clause_text: str,
+    risk_reason: str,
+    highlight_keywords: list,
+    highlight_sentences: list,
+    tenant_argument: str,
+    landlord_argument: str,
+    tenant_tags: list,
+    landlord_tags: list,
+    negotiation_points: list,
+    compromise_quote: str,
+    ui_payload: Any,
+) -> dict[str, Any]:
+    if not tenant_argument and risk_reason:
+        tenant_argument = f"해당 조항의 '{risk_reason}' 부분은 임차인에게 과도할 수 있어 조정이 필요합니다."
+    if not landlord_argument and risk_reason:
+        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 임대인에게 필요합니다."
+    if not tenant_tags and highlight_keywords:
+        tenant_tags = list(highlight_keywords)
+    if not landlord_tags and highlight_keywords:
+        landlord_tags = list(highlight_keywords)
+    if not negotiation_points:
+        if highlight_sentences:
+            negotiation_points = list(highlight_sentences)[:5]
+        elif risk_reason:
+            negotiation_points = [risk_reason]
+    if not compromise_quote and (tenant_argument or landlord_argument):
+        compromise_quote = "상호 협의하여 합리적인 범위로 조정합니다."
+    why_check = _build_why_check_message(risk_reason, clause_text)
+    return {
+        "clause_text": clause_text,
+        "risk_reason": risk_reason,
+        "tenant_argument": tenant_argument,
+        "landlord_argument": landlord_argument,
+        "tenant_tags": tenant_tags,
+        "landlord_tags": landlord_tags,
+        "negotiation_points": negotiation_points,
+        "compromise_quote": compromise_quote,
+        "why_check": why_check,
+        "ui_payload": ui_payload,
+    }
+
+
 def _clause_detail_from_obj(clause: Any) -> dict[str, Any]:
-    clause_text = getattr(clause, "content", None) or ""
-    risk_reason = getattr(clause, "risk_reason", None) or ""
-    highlight_keywords = getattr(clause, "highlight_keywords", None) or []
-    highlight_sentences = getattr(clause, "highlight_sentences", None) or []
-    tenant_argument = getattr(clause, "tenant_argument", None) or ""
-    landlord_argument = getattr(clause, "landlord_argument", None) or ""
-    tenant_tags = getattr(clause, "tenant_tags", None) or []
-    landlord_tags = getattr(clause, "landlord_tags", None) or []
-    negotiation_points = getattr(clause, "negotiation_points", None) or []
-    compromise_quote = getattr(clause, "compromise_quote", None) or ""
-    if not tenant_argument and risk_reason:
-        tenant_argument = f"해당 조항의 '{risk_reason}' 부분은 임차인에게 과도할 수 있어 조정이 필요합니다."
-    if not landlord_argument and risk_reason:
-        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 임대인에게 필요합니다."
-    if not tenant_tags and highlight_keywords:
-        tenant_tags = list(highlight_keywords)
-    if not landlord_tags and highlight_keywords:
-        landlord_tags = list(highlight_keywords)
-    if not negotiation_points:
-        if highlight_sentences:
-            negotiation_points = list(highlight_sentences)[:5]
-        elif risk_reason:
-            negotiation_points = [risk_reason]
-    if not compromise_quote and (tenant_argument or landlord_argument):
-        compromise_quote = "상호 협의하여 합리적인 범위로 조정합니다."
-    why_check = _build_why_check_message(risk_reason, clause_text)
-    return {
-        "clause_text": clause_text,
-        "risk_reason": risk_reason,
-        "tenant_argument": tenant_argument,
-        "landlord_argument": landlord_argument,
-        "tenant_tags": tenant_tags,
-        "landlord_tags": landlord_tags,
-        "negotiation_points": negotiation_points,
-        "compromise_quote": compromise_quote,
-        "why_check": why_check,
-        "ui_payload": getattr(clause, "ui_payload", None),
-    }
+    return _build_clause_detail(
+        clause_text=getattr(clause, "content", None) or "",
+        risk_reason=getattr(clause, "risk_reason", None) or "",
+        highlight_keywords=getattr(clause, "highlight_keywords", None) or [],
+        highlight_sentences=getattr(clause, "highlight_sentences", None) or [],
+        tenant_argument=getattr(clause, "tenant_argument", None) or "",
+        landlord_argument=getattr(clause, "landlord_argument", None) or "",
+        tenant_tags=getattr(clause, "tenant_tags", None) or [],
+        landlord_tags=getattr(clause, "landlord_tags", None) or [],
+        negotiation_points=getattr(clause, "negotiation_points", None) or [],
+        compromise_quote=getattr(clause, "compromise_quote", None) or "",
+        ui_payload=getattr(clause, "ui_payload", None),
+    )
+
+
 def _clause_detail_from_dict(clause: dict[str, Any]) -> dict[str, Any]:
-    clause_text = clause.get("content") or clause.get("body") or clause.get("text") or ""
-    risk_reason = clause.get("risk_reason") or ""
-    highlight_keywords = clause.get("highlight_keywords") or []
-    highlight_sentences = clause.get("highlight_sentences") or []
-    tenant_argument = clause.get("tenant_argument") or ""
-    landlord_argument = clause.get("landlord_argument") or ""
-    tenant_tags = clause.get("tenant_tags") or []
-    landlord_tags = clause.get("landlord_tags") or []
-    negotiation_points = clause.get("negotiation_points") or []
-    compromise_quote = clause.get("compromise_quote") or ""
-    if not tenant_argument and risk_reason:
-        tenant_argument = f"해당 조항의 '{risk_reason}' 부분은 임차인에게 과도할 수 있어 조정이 필요합니다."
-    if not landlord_argument and risk_reason:
-        landlord_argument = f"해당 조항은 '{risk_reason}' 사유로 임대인에게 필요합니다."
-    if not tenant_tags and highlight_keywords:
-        tenant_tags = list(highlight_keywords)
-    if not landlord_tags and highlight_keywords:
-        landlord_tags = list(highlight_keywords)
-    if not negotiation_points:
-        if highlight_sentences:
-            negotiation_points = list(highlight_sentences)[:5]
-        elif risk_reason:
-            negotiation_points = [risk_reason]
-    if not compromise_quote and (tenant_argument or landlord_argument):
-        compromise_quote = "상호 협의하여 합리적인 범위로 조정합니다."
-    why_check = _build_why_check_message(risk_reason, clause_text)
-    return {
-        "clause_text": clause_text,
-        "risk_reason": risk_reason,
-        "tenant_argument": tenant_argument,
-        "landlord_argument": landlord_argument,
-        "tenant_tags": tenant_tags,
-        "landlord_tags": landlord_tags,
-        "negotiation_points": negotiation_points,
-        "compromise_quote": compromise_quote,
-        "why_check": why_check,
-        "ui_payload": clause.get("ui_payload") or clause.get("uiPayload"),
-    }
+    return _build_clause_detail(
+        clause_text=clause.get("content") or clause.get("body") or clause.get("text") or "",
+        risk_reason=clause.get("risk_reason") or "",
+        highlight_keywords=clause.get("highlight_keywords") or [],
+        highlight_sentences=clause.get("highlight_sentences") or [],
+        tenant_argument=clause.get("tenant_argument") or "",
+        landlord_argument=clause.get("landlord_argument") or "",
+        tenant_tags=clause.get("tenant_tags") or [],
+        landlord_tags=clause.get("landlord_tags") or [],
+        negotiation_points=clause.get("negotiation_points") or [],
+        compromise_quote=clause.get("compromise_quote") or "",
+        ui_payload=clause.get("ui_payload") or clause.get("uiPayload"),
+    )
 @app.get("/")
 def read_root():
     return {"message": "Hello from FastAPI + Docker!"}
@@ -815,27 +815,10 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 risky_clauses = json.loads(risky_raw) if risky_raw else []
         except (TypeError, json.JSONDecodeError):
             risky_clauses = []
-        normalized_target = _normalize_clause_key(clause_id)
-        def matches(target: dict[str, Any]) -> bool:
-            raw_id = str(target.get("id", "")).strip()
-            article_num = str(target.get("article_num", "")).strip()
-            title = str(target.get("title", "")).strip()
-            if raw_id and raw_id == clause_id:
-                return True
-            if article_num and article_num == clause_id:
-                return True
-            if title and title == clause_id:
-                return True
-            if normalized_target:
-                if raw_id and _normalize_clause_key(raw_id) == normalized_target:
-                    return True
-                if article_num and _normalize_clause_key(article_num) == normalized_target:
-                    return True
-                if title and _normalize_clause_key(title) == normalized_target:
-                    return True
-            return False
         for clause in risky_clauses:
-            if isinstance(clause, dict) and matches(clause):
+            if isinstance(clause, dict) and _clause_matches(
+                clause, clause_id, _normalize_clause_key(clause_id)
+            ):
                 detail = _clause_detail_from_dict(clause)
                 debate_payload = _build_debate_payload(
                     result=None,
@@ -847,7 +830,9 @@ def get_clause_detail(analysis_id: str, clause_id: str) -> UTF8JSONResponse:
                 _attach_alternatives(detail)
                 return UTF8JSONResponse(content=detail)
         for clause in clauses:
-            if isinstance(clause, dict) and matches(clause):
+            if isinstance(clause, dict) and _clause_matches(
+                clause, clause_id, _normalize_clause_key(clause_id)
+            ):
                 detail = _clause_detail_from_dict(clause)
                 debate_payload = _build_debate_payload(
                     result=None,
