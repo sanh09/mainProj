@@ -39,7 +39,6 @@ pip install fastapi uvicorn  # API 사용 시
 - `OPENAI_API_KEY`: OpenAI API 키
 - `UPSTAGE_API_KEY`: Upstage OCR API key
 - `UPSTAGE_API_KEY`: Upstage OCR API 키
-- `OPENAI_OCR_MODEL`: 문서 추출 모델 (기본 `gpt-4o-mini`)
 
 ### 선택 (문서 추출)
 - `DOC_EXTRACT_OUTPUT_FORMAT`: `markdown` 또는 `json` (기본 `markdown`)
@@ -61,7 +60,6 @@ pip install fastapi uvicorn  # API 사용 시
 ```powershell
 $env:OPENAI_API_KEY = "your-openai-key"
 $env:UPSTAGE_API_KEY = "your-upstage-key"
-$env:OPENAI_OCR_MODEL = "gpt-4o-mini"
 $env:DOC_EXTRACT_OUTPUT_FORMAT = "markdown"
 $env:PRECEDENT_API_URL = "https://www.law.go.kr/DRF/lawSearch.do"
 $env:PRECEDENT_API_KEY = "your-oc"
@@ -77,7 +75,6 @@ $env:LAW_BASE_QUERY = "주택임대차보호법"
 ```cmd
 set OPENAI_API_KEY=your-openai-key
 set UPSTAGE_API_KEY=your-upstage-key
-set OPENAI_OCR_MODEL=gpt-4o-mini
 set DOC_EXTRACT_OUTPUT_FORMAT=markdown
 set PRECEDENT_API_URL=https://www.law.go.kr/DRF/lawSearch.do
 set PRECEDENT_API_KEY=your-oc

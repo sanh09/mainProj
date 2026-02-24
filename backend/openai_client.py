@@ -18,7 +18,7 @@ def _get_client():
 
 def chat_completion(
     prompt: str,
-    model: str = "gpt-5.2",
+    model: str = "gpt-4o-mini",
     system_prompt: str | None = None,
     max_tokens: int | None = None,
 ) -> str:
@@ -30,12 +30,20 @@ def chat_completion(
     if max_tokens is None:
         max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1200"))
     ApiCallCounter.record_current(f"openai_chat:{model}")
+    start_time = None
+    if os.getenv("LOG_LLM_LATENCY", "false").lower() in ("1", "true", "yes", "y"):
+        import time
+        start_time = time.perf_counter()
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         max_completion_tokens=max_tokens,
     )
     content = response.choices[0].message.content or ""
+    if start_time is not None:
+        import time
+        elapsed = time.perf_counter() - start_time
+        print(f"[LLM LATENCY] label=chat_completion model={model} seconds={elapsed:.2f}")
     if os.getenv("LOG_LLM_TOKENS", "false").lower() in ("1", "true", "yes", "y"):
         input_chars = sum(len(m.get("content") or "") for m in messages)
         output_chars = len(content)

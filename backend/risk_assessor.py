@@ -53,7 +53,7 @@ class RiskAssessor:
     }
 
     def __init__(self, model: Optional[str] = None) -> None:
-        self.model = model or os.getenv("OPENAI_RISK_MODEL") or "o4-mini"
+        self.model = model or os.getenv("OPENAI_RISK_MODEL") or "gpt-4o-mini"
         self.api_key = os.getenv("OPENAI_API_KEY") or "\uC544\uD53C\uD544\uC694"
         self.temperature = float(os.getenv("RISK_ASSESSOR_TEMPERATURE", "0"))
         self.votes = max(1, int(os.getenv("RISK_ASSESSOR_VOTES", "2")))
@@ -75,6 +75,19 @@ class RiskAssessor:
                 "openai \uD328\uD0A4\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. `pip install openai`\uB85C \uC124\uCE58\uD558\uC138\uC694."
             ) from exc
         return OpenAI(api_key=self.api_key)
+
+    def _timed_chat_completion(self, label: str, **kwargs):
+        start_time = None
+        if os.getenv("LOG_LLM_LATENCY", "false").lower() in ("1", "true", "yes", "y"):
+            import time
+            start_time = time.perf_counter()
+        response = self._client.chat.completions.create(**kwargs)
+        if start_time is not None:
+            import time
+            elapsed = time.perf_counter() - start_time
+            model = kwargs.get("model")
+            print(f"[LLM LATENCY] label={label} model={model} seconds={elapsed:.2f}")
+        return response
 
     def assess_clause(self, clause: Clause) -> Tuple[Optional[RiskType], str]:
         if self.api_key == "\uC544\uD53C\uD544\uC694":
@@ -118,10 +131,10 @@ class RiskAssessor:
                 "model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
             }
-            if self.model != "o4-mini":
+            if self.model != "gpt-4o-mini":
                 request_kwargs["temperature"] = self.temperature
             ApiCallCounter.record_current("openai_chat:risk")
-            response = self._client.chat.completions.create(**request_kwargs)
+            response = self._timed_chat_completion("risk_assessor_batch", **request_kwargs)
             content = response.choices[0].message.content or ""
             self._log_usage("risk_assessor_batch", prompt, content)
             return self._parse_json_list(content)
@@ -164,11 +177,11 @@ class RiskAssessor:
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
         }
-        if self.model != "o4-mini":
+        if self.model != "gpt-4o-mini":
             request_kwargs["temperature"] = self.temperature
 
         ApiCallCounter.record_current("openai_chat:risk")
-        response = self._client.chat.completions.create(**request_kwargs)
+        response = self._timed_chat_completion("risk_assessor", **request_kwargs)
         content = response.choices[0].message.content or ""
         self._log_usage("risk_assessor", prompt, content)
 
@@ -413,6 +426,6 @@ class RiskAssessor:
         approx_tokens = (input_chars + output_chars) // 4
         print(
             "[LLM TOKENS approx] "
-            f"label={label} model=o4-mini input_chars={input_chars} "
+            f"label={label} model={self.model} input_chars={input_chars} "
             f"output_chars={output_chars} approx_tokens={approx_tokens}"
         )

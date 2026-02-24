@@ -99,13 +99,18 @@ class ContractAnalysisPipeline:
         with ApiCallCounter.track() as api_counter:
             summary_printed = False
             try:
+                step_times: dict[str, float] = {}
+                def _record_step(label: str, start_time: float) -> None:
+                    step_times[label] = time.perf_counter() - start_time
+
                 # 1단계: 문서 추출
                 print(f"[1/8] 문서 추출 진행 중.. ({filename})")
                 step_start = time.perf_counter()
                 ocr_result = self.ocr.extract_text_from_file(file_path)
                 raw_text = get_extracted_text(ocr_result)
                 source_document = ocr_result if isinstance(ocr_result, dict) else None
-                print(f"     문서 추출 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("ocr", step_start)
+                print(f"     문서 추출 완료 ({step_times['ocr']:.2f}s)")
                 
                 # 2단계: 텍스트 정제 및 조항 분리
                 print("[2/8] 텍스트 정제 및 조항 분리...")
@@ -113,7 +118,8 @@ class ContractAnalysisPipeline:
                 clean_text = self.text_processor.clean_text(raw_text)
                 clauses = self.text_processor.split_clauses_with_fallback(clean_text)
                 print(f"     총 {len(clauses)}개 조항 추출")
-                print(f"     텍스트 정제/분리 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("split", step_start)
+                print(f"     텍스트 정제/분리 완료 ({step_times['split']:.2f}s)")
                 
                 # 3단계: 위험 조항 필터링
                 print("[3/8] 위험 조항 필터링...")
@@ -125,7 +131,8 @@ class ContractAnalysisPipeline:
                 else:
                     risky_clauses = self.risk_assessor.filter_risky_clauses(clauses)
                 print(f"     위험 조항 {len(risky_clauses)}개 발견")
-                print(f"     위험 조항 필터링 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("risk_filter", step_start)
+                print(f"     위험 조항 필터링 완료 ({step_times['risk_filter']:.2f}s)")
                 
                 # 4단계: 판례 데이터 수집
                 print("[4/8] 공공 판례 API 호출...")
@@ -205,7 +212,8 @@ class ContractAnalysisPipeline:
                     all_laws.extend(laws)
                 all_laws = self.law_fetcher._dedupe_laws(all_laws)
                 print(f"     precedents {len(all_precedents)}, laws {len(all_laws)} collected")
-                print(f"     판례/법령 수집 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("precedent_law_fetch", step_start)
+                print(f"     판례/법령 수집 완료 ({step_times['precedent_law_fetch']:.2f}s)")
                 
                 # 5단계: 임베딩 생성 및 유사도 검색
                 print("[5/8] 임베딩 생성 및 유사도 검색..")
@@ -281,13 +289,15 @@ class ContractAnalysisPipeline:
                 )
                 print(f"     임베딩 토큰(대략): {approx_tokens} (chars/4 기준)")
                 print("     유사도 검색 완료")
-                print(f"     임베딩/유사도 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("embedding_search", step_start)
+                print(f"     임베딩/유사도 완료 ({step_times['embedding_search']:.2f}s)")
                 
                 # 6단계: 위험 유형 매핑 (카테고리 계산은 4단계 쿼리 생성에 이미 활용)
                 print("[6/8] 위험 유형 매핑...")
                 step_start = time.perf_counter()
                 print("     위험 유형 분류 완료")
-                print(f"     위험 유형 매핑 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("risk_mapping", step_start)
+                print(f"     위험 유형 매핑 완료 ({step_times['risk_mapping']:.2f}s)")
  
                 # 7단계: 갑/을 토론 생성
                 print("[7/8] 갑/을 토론 생성...")
@@ -306,11 +316,13 @@ class ContractAnalysisPipeline:
                     for turn in debate_transcript:
                         if turn.get("speaker") in ("mediator", "중재자"):
                             turn["speaker"] = "판사"
-                print(f"     토론 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("debate", step_start)
+                print(f"     토론 생성 완료 ({step_times['debate']:.2f}s)")
  
                 # UI payload 생성 (조항별 P(L1~L4)) - 토론 스니펫 포함
                 if self.generate_ui_payload:
                     print("     UI payload 생성...")
+                    ui_start = time.perf_counter()
                     debate_snippet = self._format_debate_transcript(debate_transcript or [])
                     if self.debate_snippet_max_chars > 0:
                         debate_snippet = debate_snippet[: self.debate_snippet_max_chars]
@@ -358,6 +370,7 @@ class ContractAnalysisPipeline:
                             for future in as_completed(futures):
                                 clause, payload = future.result()
                                 clause.ui_payload = payload
+                    _record_step("ui_payload", ui_start)
  
                 # 8단계: LLM 요약 생성
                 print("[8/8] LLM 조항 요약 생성...")
@@ -385,7 +398,16 @@ class ContractAnalysisPipeline:
                         )
                         if debate_summary and debate_summary != "api필요":
                             llm_summary = f"{llm_summary}\n\n## 토론 요약\n{debate_summary}"
-                print(f"     요약 생성 완료 ({time.perf_counter() - step_start:.2f}s)")
+                _record_step("summary", step_start)
+                print(f"     요약 생성 완료 ({step_times['summary']:.2f}s)")
+
+                if step_times:
+                    total_time = sum(step_times.values())
+                    print("\n[타임 브레이크다운]")
+                    for label, secs in sorted(step_times.items(), key=lambda item: item[1], reverse=True):
+                        ratio = (secs / total_time * 100) if total_time > 0 else 0
+                        print(f" - {label}: {secs:.2f}s ({ratio:.1f}%)")
+                    print(f" - total (sum): {total_time:.2f}s")
                 
                 # 결과 반환
                 result = ContractAnalysisResult(

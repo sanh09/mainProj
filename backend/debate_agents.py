@@ -50,14 +50,14 @@ MEDIATOR_SYSTEM_PROMPT = (
 
 class DebateAgents:
     def __init__(self, model: str | None = None) -> None:
-        self.model = model or os.getenv("OPENAI_DEBATE_MODEL") or "o4-mini"
+        self.model = model or os.getenv("OPENAI_DEBATE_MODEL") or "gpt-4o-mini"
 
     def run(
         self,
         clauses: List[Clause],
         raw_text: Optional[str] = None,
         rounds: int = 0,
-        max_rounds: int = 1,
+        max_rounds: int = 2,
         contract_type: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         if not os.getenv("OPENAI_API_KEY"):
