@@ -1,11 +1,10 @@
-﻿import 'dart:convert';
-
+﻿
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:main/welcome_screen.dart';
 
 import 'login_screen.dart';
 import 'signup_screen.dart';
-import 'welcome_screen.dart';
 
 class DetailPalette {
   static const Color primary = Color(0xFFFA9819);
@@ -308,46 +307,10 @@ String _sanitizeArgumentText(String value) {
   if (trimmed.isEmpty) {
     return value;
   }
-  final jsonCandidate = _extractJsonObject(trimmed);
-  if (jsonCandidate != null) {
-    try {
-      final decoded = jsonDecode(jsonCandidate);
-      if (decoded is Map<String, dynamic>) {
-        final rationale = _stringFromMap(decoded['rationale']);
-        if (rationale != null && rationale.isNotEmpty) {
-          return rationale;
-        }
-        final text = _stringFromMap(decoded['text']);
-        if (text != null && text.isNotEmpty) {
-          return text;
-        }
-      }
-    } catch (_) {
-      // Fall through to raw text.
-    }
-  }
-  return value;
-}
-
-String? _stringFromMap(dynamic value) {
-  if (value == null) {
-    return null;
-  }
-  if (value is String) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
-  }
-  final converted = value.toString().trim();
-  return converted.isEmpty ? null : converted;
-}
-
-String? _extractJsonObject(String value) {
-  final start = value.indexOf('{');
-  final end = value.lastIndexOf('}');
-  if (start == -1 || end == -1 || end <= start) {
-    return null;
-  }
-  return value.substring(start, end + 1);
+  final normalized = trimmed
+      .replaceAll(RegExp(r'[ \t]+'), ' ')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return normalized;
 }
 
 class _DetailAppBar extends StatelessWidget {

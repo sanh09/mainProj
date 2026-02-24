@@ -5,20 +5,20 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:main/loading.dart';
 
+import '../welcome_screen.dart';
+import 'upload_screen.dart';
 import '../login_screen.dart';
-import '../loading.dart';
 import '../profile_edit_screen.dart';
 import '../result.dart';
 import '../signup_screen.dart';
 import '../user_session.dart';
-import '../welcome_screen.dart';
 import 'history_screen.dart';
 import 'security.dart';
 import 'service_center.dart';
 import 'system.dart';
 import 'guide.dart';
-import 'upload_screen.dart';
 
 class SettingsPalette {
   static const Color primary = Color(0xFFFF8A00);
@@ -28,8 +28,6 @@ class SettingsPalette {
   static const Color textDark = Color(0xFF1F2937);
   static const Color textMuted = Color(0xFF6B7280);
 }
-
-enum _RiskLevel { low, medium, high }
 
 class _Blob extends StatelessWidget {
   final double size;
@@ -480,7 +478,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final String? _email;
   late Future<_ProfileData?> _profileFuture;
   bool _notificationsEnabled = true;
-  _RiskLevel _riskLevel = _RiskLevel.medium;
   String _systemModeLabel = '시스템 설정';
 
   @override
@@ -564,74 +561,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _systemModeLabel = result;
     });
-  }
-
-  String _riskLevelLabel(_RiskLevel level) {
-    switch (level) {
-      case _RiskLevel.low:
-        return '낮음';
-      case _RiskLevel.medium:
-        return '중간';
-      case _RiskLevel.high:
-        return '높음';
-    }
-  }
-
-  Future<void> _showRiskLevelPicker() async {
-    if (!mounted) return;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '위험 감수 수준',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : SettingsPalette.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                for (final level in _RiskLevel.values)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      _riskLevelLabel(level),
-                      style: TextStyle(
-                        color: isDark ? Colors.white : SettingsPalette.textDark,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    trailing: _riskLevel == level
-                        ? Icon(
-                            Icons.check_circle,
-                            color: SettingsPalette.primary,
-                          )
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        _riskLevel = level;
-                      });
-                      Navigator.of(context).pop();
-                    },
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Map<String, dynamic> _unwrapProfileMap(Map<String, dynamic> data) {
@@ -907,29 +836,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                 _openSystemSettings(context);
                                               },
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 20),
-                                      const _SectionHeader(label: '검토 설정'),
-                                      _GlassCard(
-                                        child: Column(
-                                          children: [
-                                            _SettingsTile(
-                                              icon: Icons.menu_book,
-                                              iconColor: const Color(
-                                                0xFF10B981,
-                                              ),
-                                              iconBg: isDark
-                                                  ? const Color(0xFF064E3B)
-                                                  : const Color(0xFFD1FAE5),
-                                                label: '위험 감수 수준',
-                                                trailingLabel: _riskLevelLabel(
-                                                  _riskLevel,
-                                                ),
-                                                onTap: _showRiskLevelPicker,
-                                                isLast: true,
-                                              ),
                                           ],
                                         ),
                                       ),

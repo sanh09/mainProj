@@ -1,3 +1,5 @@
+﻿import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'profile_screen.dart';
@@ -12,7 +14,9 @@ class GuidePalette {
 }
 
 class GuideScreen extends StatefulWidget {
-  const GuideScreen({super.key});
+  final bool showCancelButton;
+
+  const GuideScreen({super.key, this.showCancelButton = false});
 
   @override
   State<GuideScreen> createState() => _GuideScreenState();
@@ -22,52 +26,52 @@ class _GuideScreenState extends State<GuideScreen> {
   int _activeTab = 0;
   final List<_GuideTab> _tabs = [
     _GuideTab(
-      headerLabel: '체크리스트',
+      headerLabel: '',
       items: const [
         _GuideItem(
-          title: '특약 사항의 독소 조항 확인',
-          description: '나에게 불리한 문구가 있는지 보세요',
+          title: '계약 사항과 주요 조항 확인',
+          description: '서명 전에 불리한 문구가 있는지 확인하세요.',
           icon: Icons.gavel,
         ),
         _GuideItem(
-          title: '임대인/임차인 인적사항 대조',
-          description: '등기부등본상의 소유주와 일치하는지 확인하세요',
+          title: '특약 및 중요한 조항 검토',
+          description: '특약과 계약 조건이 일치하는지 확인하세요.',
           icon: Icons.badge,
         ),
         _GuideItem(
-          title: '계약 기간 및 임대료 명시 확인',
-          description: '구두로 협의된 내용과 문서상 내용이 같은지 확인 필요합니다.',
+          title: '계약 기간 및 종료 조건 확인',
+          description: '구두로 합의한 내용과 문서 내용이 같은지 확인하세요.',
           icon: Icons.date_range,
         ),
         _GuideItem(
-          title: '수선 의무 및 관리비 범위 확인',
-          description: '관리비에 포함되는 항목과 수리 책임 범위를 명확히 하세요.',
+          title: '선수 금액 및 관리비 범위 확인',
+          description: '관리비에 포함되는 항목과 부담 범위를 명확히 확인하세요.',
           icon: Icons.build,
         ),
       ],
       initialChecked: [false, false, false, false],
     ),
     _GuideTab(
-      headerLabel: '필수 행동 가이드',
+      headerLabel: '',
       items: const [
         _GuideItem(
-          title: '등기부등본 현장 발급 확인',
-          description: '인터넷 등기소가 아닌, 현장에서 직접 뽑아서 확인하세요. 가장 정확합니다.',
+          title: '등기부등본 발급 확인',
+          description: '온라인 발급본과 함께 원본도 직접 확인하세요.',
           icon: Icons.print,
         ),
         _GuideItem(
-          title: '임대인 신분증 진위 확인',
-          description: 'ARS 1382 또는 정부24 앱을 활용하여 신분증의 진위 여부를 대조하세요.',
+          title: '전입신고 및 확정일자 확인',
+          description: '정부24, ARS 1382 등으로 권리 정보를 확인하세요.',
           icon: Icons.smartphone,
         ),
         _GuideItem(
           title: '공인중개사 자격 여부 확인',
-          description: '국가공간정보포털에서 중개사가 정식 등록된 인원인지 확인했습니다.',
+          description: '국토교통부 사이트에서 등록 여부를 확인하세요.',
           icon: Icons.verified_user,
         ),
         _GuideItem(
-          title: '현장 상태 사진 및 동영상 촬영',
-          description: '입주 전 파손 부위나 상태를 사진과 동영상으로 꼼꼼히 남겨두세요.',
+          title: '현장 상태 사진 및 영상 촬영',
+          description: '입주 전 상태를 사진과 영상으로 남겨두세요.',
           icon: Icons.camera_alt,
         ),
       ],
@@ -95,15 +99,21 @@ class _GuideScreenState extends State<GuideScreen> {
           SafeArea(
             child: Column(
               children: [
-                _Header(isDark: isDark),
+                _Header(
+                  isDark: isDark,
+                  showCancelButton: widget.showCancelButton,
+                ),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _HeroCard(isDark: isDark),
-                        const SizedBox(height: 16),
+                        _HeroCard(
+                          isDark: isDark,
+                          showCancelButton: widget.showCancelButton,
+                        ),
+                        const SizedBox(height: 30),
                         _TabBar(
                           activeTab: _activeTab,
                           onChanged: (value) {
@@ -114,11 +124,6 @@ class _GuideScreenState extends State<GuideScreen> {
                           isDark: isDark,
                         ),
                         const SizedBox(height: 16),
-                        _ChecklistHeader(
-                          label: activeTab.headerLabel,
-                          checkedCount: checkedCount,
-                          totalCount: activeTab.items.length,
-                        ),
                         const SizedBox(height: 10),
                         for (int i = 0; i < activeTab.items.length; i++)
                           Padding(
@@ -141,7 +146,10 @@ class _GuideScreenState extends State<GuideScreen> {
               ],
             ),
           ),
-          _BottomAction(isDark: isDark),
+          _BottomAction(
+            isDark: isDark,
+            showCancelButton: widget.showCancelButton,
+          ),
         ],
       ),
     );
@@ -206,10 +214,161 @@ class _GlowBlob extends StatelessWidget {
   }
 }
 
+class _ContractHelperMiniLogo extends StatefulWidget {
+  final bool animate;
+
+  const _ContractHelperMiniLogo({this.animate = false});
+
+  @override
+  State<_ContractHelperMiniLogo> createState() => _ContractHelperMiniLogoState();
+}
+
+class _ContractHelperMiniLogoState extends State<_ContractHelperMiniLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
+    if (widget.animate) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ContractHelperMiniLogo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animate != widget.animate) {
+      if (widget.animate) {
+        _controller.repeat();
+      } else {
+        _controller.stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        final offset = widget.animate ? math.sin(t * math.pi * 2) * 4 : 0.0;
+        return Transform.translate(
+          offset: Offset(0, offset),
+          child: child,
+        );
+      },
+      child: SizedBox(
+        width: 90,
+        height: 90,
+        child: Center(
+          child: Container(
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Container(
+                width: 50,
+                height: 58,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  color: GuidePalette.primary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Column(
+                      children: [
+                        Container(
+                          width: 25,
+                          height: 3,
+                          margin: const EdgeInsets.only(bottom: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        Container(
+                          width: 25,
+                          height: 3,
+                          margin: const EdgeInsets.only(bottom: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            width: 20,
+                            height: 3,
+                            margin: const EdgeInsets.only(left: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      bottom: 6,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: GuidePalette.primary,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   final bool isDark;
+  final bool showCancelButton;
 
-  const _Header({required this.isDark});
+  const _Header({required this.isDark, required this.showCancelButton});
 
   @override
   Widget build(BuildContext context) {
@@ -222,28 +381,23 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(
-              Icons.arrow_back,
-              color: isDark ? Colors.white : const Color(0xFF374151),
+          if (!showCancelButton)
+            IconButton(
+              icon: Icon(
+                Icons.arrow_back,
+                color: isDark ? Colors.white : const Color(0xFF374151),
+              ),
+              onPressed: () => Navigator.of(context).pop(),
             ),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
           const Expanded(
             child: Center(
               child: Text(
-                '계약 전, 행동 가이드',
+                '계약 전 행동 가이드',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
           ),
-          IconButton(
-            icon: Icon(
-              Icons.more_horiz,
-              color: isDark ? Colors.white : const Color(0xFF374151),
-            ),
-            onPressed: () {},
-          ),
+          const SizedBox(width: 40),
         ],
       ),
     );
@@ -252,8 +406,12 @@ class _Header extends StatelessWidget {
 
 class _HeroCard extends StatelessWidget {
   final bool isDark;
+  final bool showCancelButton;
 
-  const _HeroCard({required this.isDark});
+  const _HeroCard({
+    required this.isDark,
+    required this.showCancelButton,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -290,27 +448,29 @@ class _HeroCard extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(40),
             child: Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
+                    children: [
+                      const Text(
                         'CANSI AI ANALYSIS',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.2,
                           color: Colors.white70,
                         ),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
-                        '성공적인 계약을 위한\n최종 단계',
-                        style: TextStyle(
-                          fontSize: 20,
+                        showCancelButton
+                            ? '계약서 분석 중'
+                            : '안전한 계약을 \n위한 최종 체크',
+                        style: const TextStyle(
+                          fontSize: 25,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                           height: 1.3,
@@ -319,25 +479,8 @@ class _HeroCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 10,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.security,
-                    color: GuidePalette.primary,
-                    size: 30,
-                  ),
-                ),
+                const SizedBox(width: 35),
+                _ContractHelperMiniLogo(animate: showCancelButton),
               ],
             ),
           ),
@@ -361,7 +504,7 @@ class _TabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: isDark ? GuidePalette.surfaceDark : const Color(0xFFE5E7EB),
         borderRadius: BorderRadius.circular(12),
@@ -369,12 +512,12 @@ class _TabBar extends StatelessWidget {
       child: Row(
         children: [
           _TabButton(
-            label: '계약서 확인 시',
+            label: '계약서 확인 전',
             selected: activeTab == 0,
             onTap: () => onChanged(0),
           ),
           _TabButton(
-            label: '계약 체결 전',
+            label: '계약서 체결 전',
             selected: activeTab == 1,
             onTap: () => onChanged(1),
           ),
@@ -419,52 +562,13 @@ class _TabButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 15,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
               color: selected ? GuidePalette.primary : const Color(0xFF6B7280),
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ChecklistHeader extends StatelessWidget {
-  final String label;
-  final int checkedCount;
-  final int totalCount;
-
-  const _ChecklistHeader({
-    required this.label,
-    required this.checkedCount,
-    required this.totalCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final percent = totalCount == 0 ? 0 : (checkedCount / totalCount * 100);
-    return Row(
-      children: [
-        Text(
-          '$label ($checkedCount/$totalCount)',
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF6B7280),
-            letterSpacing: 0.8,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          '${percent.toStringAsFixed(0)}% 완료',
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: GuidePalette.primary,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -510,11 +614,6 @@ class _ChecklistCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Checkbox(
-            value: value,
-            activeColor: GuidePalette.primary,
-            onChanged: (next) => onChanged(next ?? false),
-          ),
           const SizedBox(width: 6),
           Expanded(
             child: Column(
@@ -547,8 +646,12 @@ class _ChecklistCard extends StatelessWidget {
 
 class _BottomAction extends StatelessWidget {
   final bool isDark;
+  final bool showCancelButton;
 
-  const _BottomAction({required this.isDark});
+  const _BottomAction({
+    required this.isDark,
+    required this.showCancelButton,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -575,20 +678,133 @@ class _BottomAction extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
             onTap: () {
+              if (showCancelButton) {
+                showDialog<void>(
+                  context: context,
+                  builder: (dialogContext) {
+                    final dialogIsDark =
+                        Theme.of(dialogContext).brightness == Brightness.dark;
+                    return Dialog(
+                      backgroundColor: Colors.transparent,
+                      insetPadding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 24,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                        decoration: BoxDecoration(
+                          color: dialogIsDark
+                              ? GuidePalette.surfaceDark
+                              : GuidePalette.surfaceLight,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 24,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
+                          border: Border.all(
+                            color: dialogIsDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : Colors.black.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '분석을 중단할까요?',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: dialogIsDark
+                                    ? Colors.white
+                                    : const Color(0xFF111827),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '중단하면 분석 진행이 취소됩니다.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                height: 1.5,
+                                color: dialogIsDark
+                                    ? const Color(0xFF9CA3AF)
+                                    : const Color(0xFF6B7280),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () =>
+                                        Navigator.of(dialogContext).pop(),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: dialogIsDark
+                                          ? Colors.white
+                                          : const Color(0xFF374151),
+                                      side: BorderSide(
+                                        color: dialogIsDark
+                                            ? Colors.white
+                                                .withValues(alpha: 0.18)
+                                            : const Color(0xFFE5E7EB),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: const Text('계속할게요'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.of(dialogContext).pop();
+                                      Navigator.of(context).pop();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: GuidePalette.primary,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: const Text('중단하기'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+                return;
+              }
               Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
             },
-            child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 8),
                   Text(
-                    '확인 완료',
-                    style: TextStyle(
+                    showCancelButton ? '중단하기' : '완료하기',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,

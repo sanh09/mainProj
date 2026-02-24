@@ -43,6 +43,8 @@ class _LoadingScreenState extends State<LoadingScreen>
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final background = isDark ? backgroundDark : backgroundLight;
+    final textPrimary = isDark ? Colors.white : const Color(0xFF111827);
+    final textMuted = isDark ? Colors.white70 : const Color(0xFF6B7280);
 
     return Scaffold(
       backgroundColor: background,
@@ -73,34 +75,35 @@ class _LoadingScreenState extends State<LoadingScreen>
             ),
             Column(
               children: [
-                Expanded(
-                  child: Column(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _LogoCluster(
+                      _LogoMark(
                         pulseController: _pulseController,
                         primary: primary,
                         accent: accent,
-                        isDark: isDark,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(width: 14),
                       Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'CanSi',
                             style: TextStyle(
-                              fontSize: 56,
+                              fontSize: 28,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: -1,
-                              color: isDark ? Colors.white : Colors.black87,
+                              letterSpacing: -0.2,
+                              color: textPrimary,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           const Text(
                             'YOUR CONTRACT HELPER',
                             style: TextStyle(
-                              fontSize: 11,
-                              letterSpacing: 2.6,
+                              fontSize: 10,
+                              letterSpacing: 2.2,
                               fontWeight: FontWeight.w700,
                               color: primary,
                             ),
@@ -110,185 +113,292 @@ class _LoadingScreenState extends State<LoadingScreen>
                     ],
                   ),
                 ),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _PreviewCard(
+                            isDark: isDark,
+                            shimmer: _pulseController,
+                          ),
+                          const SizedBox(height: 24),
+                          _BouncingDots(
+                            controller: _dotsController,
+                            color: primary,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '계약서를 분석중입니다.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 44),
-                  child: Column(
-                    children: [
-                      _BouncingDots(
-                        controller: _dotsController,
-                        color: primary,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '계약서를 분석중입니다.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white70 : const Color(0xFF6B7280),
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final shouldCancel =
-                                await showDialog<bool>(
-                              context: context,
-                              builder: (dialogContext) {
-                                return Dialog(
-                                  backgroundColor:
-                                      isDark ? backgroundDark : Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      22,
-                                      22,
-                                      22,
-                                      18,
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 24),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        final shouldCancel = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) {
+                            const redoOrange = Color(0xFFFA9819);
+                            const redoOrangeDeep = Color(0xFFFF7A00);
+                            const redoBlueTint = Color(0xFFB6C9CF);
+                            const textMain = Color(0xFF1A1C1E);
+
+                            return Dialog(
+                              backgroundColor: Colors.transparent,
+                              insetPadding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 24,
+                              ),
+                              child: Container(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 340),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(32),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.12),
+                                      blurRadius: 40,
+                                      offset: const Offset(0, 20),
                                     ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Container(
-                                          width: 48,
-                                          height: 48,
-                                          decoration: BoxDecoration(
-                                            color: primary.withValues(
-                                              alpha: isDark ? 0.2 : 0.12,
-                                            ),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.pause_circle_filled_rounded,
-                                            color: primary,
-                                            size: 28,
-                                          ),
+                                  ],
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Container(
+                                      height: 120,
+                                      decoration: BoxDecoration(
+                                        borderRadius: const BorderRadius.vertical(
+                                          top: Radius.circular(32),
                                         ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          '분석을 중단할까요?',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w800,
-                                            color: isDark
-                                                ? Colors.white
-                                                : const Color(0xFF111827),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          '계속 진행하거나 지금 바로 중단할 수 있어요.',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            height: 1.4,
-                                            color: isDark
-                                                ? Colors.white70
-                                                : const Color(0xFF6B7280),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 20),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: OutlinedButton(
-                                                onPressed: () {
-                                                  Navigator.of(dialogContext)
-                                                      .pop(false);
-                                                },
-                                                style: OutlinedButton.styleFrom(
-                                                  side: BorderSide(
-                                                    color: primary.withValues(
-                                                      alpha: 0.6,
-                                                    ),
-                                                  ),
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                    vertical: 12,
-                                                  ),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      16,
-                                                    ),
-                                                  ),
-                                                ),
-                                                child: const Text(
-                                                  '계속하기',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                    letterSpacing: 0.2,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: ElevatedButton(
-                                                onPressed: () {
-                                                  Navigator.of(dialogContext)
-                                                      .pop(true);
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: primary,
-                                                  foregroundColor: Colors.white,
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                    vertical: 12,
-                                                  ),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      16,
-                                                    ),
-                                                  ),
-                                                  elevation: 0,
-                                                ),
-                                                child: const Text(
-                                                  '중단하기',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w800,
-                                                    letterSpacing: 0.2,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            redoOrange.withValues(alpha: 0.08),
+                                            Colors.transparent,
                                           ],
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                );
-                              },
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        24,
+                                        32,
+                                        24,
+                                        24,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 80,
+                                            height: 80,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: redoOrange.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                            ),
+                                            child: Center(
+                                              child: Container(
+                                                width: 64,
+                                                height: 64,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: redoOrange
+                                                      .withValues(alpha: 0.12),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.logout,
+                                                  size: 36,
+                                                  color: redoOrange,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 20),
+                                          const Text(
+                                            '분석을 중단하시겠어요?',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              height: 1.2,
+                                              color: textMain,
+                                              letterSpacing: -0.2,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            '지금 나가시면 분석 중인 데이터가 저장되지 않을 수 있습니다.',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              height: 1.5,
+                                              color: redoBlueTint
+                                                  .withValues(alpha: 0.9),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 24),
+                                          Column(
+                                            children: [
+                                              SizedBox(
+                                                width: double.infinity,
+                                                height: 56,
+                                                child: ElevatedButton(
+                                                  onPressed: () =>
+                                                      Navigator.of(dialogContext)
+                                                          .pop(false),
+                                                  style: ElevatedButton.styleFrom(
+                                                    padding: EdgeInsets.zero,
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        20,
+                                                      ),
+                                                    ),
+                                                    elevation: 0,
+                                                    backgroundColor:
+                                                        Colors.transparent,
+                                                    shadowColor:
+                                                        Colors.transparent,
+                                                  ),
+                                                  child: Ink(
+                                                    decoration: BoxDecoration(
+                                                      gradient:
+                                                          const LinearGradient(
+                                                        colors: [
+                                                          redoOrange,
+                                                          redoOrangeDeep,
+                                                        ],
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        20,
+                                                      ),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: redoOrange
+                                                              .withValues(
+                                                            alpha: 0.4,
+                                                          ),
+                                                          blurRadius: 20,
+                                                          offset: const Offset(
+                                                            0,
+                                                            8,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    child: const Center(
+                                                      child: Text(
+                                                        '돌아가기',
+                                                        style: TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                height: 56,
+                                                child: OutlinedButton(
+                                                  onPressed: () =>
+                                                      Navigator.of(dialogContext)
+                                                          .pop(true),
+                                                  style: OutlinedButton.styleFrom(
+                                                    backgroundColor:
+                                                        const Color(0xFFF1F5F9),
+                                                    foregroundColor:
+                                                        const Color(0xFF94A3B8),
+                                                    side: BorderSide(
+                                                      color: const Color(
+                                                        0xFFE2E8F0,
+                                                      ).withValues(alpha: 0.7),
+                                                    ),
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        20,
+                                                      ),
+                                                    ),
+                                                    textStyle: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  child: const Text('끝내기'),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             );
-                            if (!mounted) return;
-                            if (shouldCancel == true) {
-                              Navigator.of(context).pop();
-                            }
                           },
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: const BorderSide(color: primary),
-                            backgroundColor: Colors.white,
-                            foregroundColor: primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          child: const Text(
-                            '중단하기',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
+                        );
+                        if (!context.mounted) return;
+                        if (shouldCancel == true) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: primary),
+                        backgroundColor: Colors.white,
+                        foregroundColor: primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
                         ),
                       ),
-                    ],
+                      child: const Text(
+                        '중단하기',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    width: 120,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : Colors.black.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
                 ),
               ],
@@ -300,40 +410,25 @@ class _LoadingScreenState extends State<LoadingScreen>
   }
 }
 
-class _LogoCluster extends StatelessWidget {
+class _LogoMark extends StatelessWidget {
   final AnimationController pulseController;
   final Color primary;
   final Color accent;
-  final bool isDark;
 
-  const _LogoCluster({
+  const _LogoMark({
     required this.pulseController,
     required this.primary,
     required this.accent,
-    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 220,
-      height: 240,
+      width: 56,
+      height: 56,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Positioned(
-            top: 8,
-            child: ClipPath(
-              clipper: _ShieldClipper(),
-              child: Container(
-                width: 200,
-                height: 220,
-                color: isDark
-                    ? primary.withValues(alpha: 0.08)
-                    : const Color(0xFFFFF7ED).withValues(alpha: 0.9),
-              ),
-            ),
-          ),
           AnimatedBuilder(
             animation: pulseController,
             builder: (context, child) {
@@ -343,16 +438,16 @@ class _LogoCluster extends StatelessWidget {
               return Transform.scale(
                 scale: scale,
                 child: Container(
-                  width: 180,
-                  height: 180,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: primary.withValues(alpha: 0.06),
+                    color: primary.withValues(alpha: 0.08),
                     boxShadow: [
                       BoxShadow(
-                        color: primary.withValues(alpha: 0.35 * alpha),
-                        blurRadius: 28,
-                        spreadRadius: 4 + 18 * t,
+                        color: primary.withValues(alpha: 0.4 * alpha),
+                        blurRadius: 18,
+                        spreadRadius: 4 + 10 * t,
                       ),
                     ],
                   ),
@@ -361,8 +456,8 @@ class _LogoCluster extends StatelessWidget {
             },
           ),
           Container(
-            width: 150,
-            height: 150,
+            width: 56,
+            height: 56,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
@@ -377,26 +472,19 @@ class _LogoCluster extends StatelessWidget {
               boxShadow: [
                 BoxShadow(
                   color: Color(0x66FF8A00),
-                  blurRadius: 24,
-                  offset: Offset(0, 10),
+                  blurRadius: 16,
+                  offset: Offset(0, 8),
                 ),
               ],
             ),
             child: Center(
               child: Container(
-                width: 90,
-                height: 118,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                width: 32,
+                height: 42,
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Stack(
                   alignment: Alignment.center,
@@ -404,18 +492,18 @@ class _LogoCluster extends StatelessWidget {
                     Column(
                       children: [
                         Container(
-                          width: 52,
-                          height: 6,
-                          margin: const EdgeInsets.only(bottom: 8),
+                          width: 20,
+                          height: 2.5,
+                          margin: const EdgeInsets.only(bottom: 4),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE5E7EB),
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
                         Container(
-                          width: 52,
-                          height: 6,
-                          margin: const EdgeInsets.only(bottom: 8),
+                          width: 20,
+                          height: 2.5,
+                          margin: const EdgeInsets.only(bottom: 4),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE5E7EB),
                             borderRadius: BorderRadius.circular(999),
@@ -424,9 +512,9 @@ class _LogoCluster extends StatelessWidget {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Container(
-                            width: 32,
-                            height: 6,
-                            margin: const EdgeInsets.only(left: 16),
+                            width: 12,
+                            height: 2.5,
+                            margin: const EdgeInsets.only(left: 5),
                             decoration: BoxDecoration(
                               color: const Color(0xFFE5E7EB),
                               borderRadius: BorderRadius.circular(999),
@@ -436,29 +524,22 @@ class _LogoCluster extends StatelessWidget {
                       ],
                     ),
                     Positioned(
-                      bottom: 20,
+                      bottom: 6,
                       child: Container(
-                        width: 42,
-                        height: 42,
+                        width: 16,
+                        height: 16,
                         decoration: BoxDecoration(
                           color: accent,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: Colors.white.withValues(alpha: 0.4),
-                            width: 3,
+                            width: 1.5,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
                         ),
                         child: const Icon(
                           Icons.check_rounded,
                           color: Colors.white,
-                          size: 26,
+                          size: 10,
                         ),
                       ),
                     ),
@@ -469,6 +550,83 @@ class _LogoCluster extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PreviewCard extends StatelessWidget {
+  final bool isDark;
+  final Animation<double> shimmer;
+
+  const _PreviewCard({required this.isDark, required this.shimmer});
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 4 / 5,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.6),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
+            _ShimmerLayer(isDark: isDark, animation: shimmer),
+            Center(
+              child: Icon(
+                Icons.movie_rounded,
+                size: 56,
+                color:
+                    (isDark ? Colors.white : Colors.black).withValues(alpha: 0.2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShimmerLayer extends StatelessWidget {
+  final bool isDark;
+  final Animation<double> animation;
+
+  const _ShimmerLayer({required this.isDark, required this.animation});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final t = animation.value;
+        final start = -1.5 + (3 * t);
+        final base = isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : const Color(0xFFF6F7F8);
+        final highlight = isDark
+            ? Colors.white.withValues(alpha: 0.12)
+            : const Color(0xFFEDEEF1);
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment(start, 0),
+              end: Alignment(start + 1, 0),
+              colors: [base, highlight, base],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -556,21 +714,4 @@ class _Blob extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ShieldClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    return Path()
-      ..moveTo(size.width * 0.5, 0)
-      ..lineTo(size.width, size.height * 0.15)
-      ..lineTo(size.width, size.height * 0.85)
-      ..lineTo(size.width * 0.5, size.height)
-      ..lineTo(0, size.height * 0.85)
-      ..lineTo(0, size.height * 0.15)
-      ..close();
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

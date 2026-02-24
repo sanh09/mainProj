@@ -1,9 +1,11 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:main/welcome_screen.dart';
 
 import 'detail.dart';
 import 'login_screen.dart';
@@ -11,7 +13,6 @@ import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
 import 'signup_screen.dart';
 import 'user_session.dart';
-import 'welcome_screen.dart';
 
 part 'result_clause_list.dart';
 
@@ -685,7 +686,7 @@ class ResultViewModel extends ChangeNotifier {
       }
       // Remove markdown heading/bullets.
       trimmed = trimmed.replaceAll(RegExp(r'^#{1,6}\s*'), '');
-      trimmed = trimmed.replaceAll(RegExp(r'^[-*•]\s+'), '');
+      trimmed = trimmed.replaceAll(RegExp(r'^[-*?]\s+'), '');
       // Remove markdown emphasis markers.
       trimmed = trimmed.replaceAll(RegExp(r'[*_`]+'), '');
       if (trimmed.isNotEmpty) {
@@ -946,105 +947,292 @@ class _ResultScreenState extends State<ResultScreen> {
       return;
     }
     _isLoginDialogOpen = true;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
+      barrierColor: Colors.transparent,
       builder: (dialogContext) {
+        const redoOrange = Color(0xFFFA9819);
+        const redoOrangeDeep = Color(0xFFE07C00);
+        const backgroundDark = Color(0xFF0A1416);
+        const cardBg = Color(0xFFF0F4F5);
+        const textDark = Color(0xFF0A1416);
+        const textMuted = Color(0xFF5E7378);
+        final media = MediaQuery.of(dialogContext);
+
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-            decoration: BoxDecoration(
-              color: isDark ? ResultPalette.cardDark : ResultPalette.cardLight,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? Colors.white12 : ResultPalette.cardBorder,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          insetPadding: EdgeInsets.zero,
+          child: SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: Stack(
               children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: ResultPalette.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.lock_rounded,
-                    color: ResultPalette.primary,
-                    size: 26,
+                Positioned.fill(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                    child: Container(
+                      color: backgroundDark.withValues(alpha: 0.6),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  '로그인이 필요합니다',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : ResultPalette.textHeader,
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'AI 요약과 자세히 보기는 로그인 후 이용 가능합니다.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : ResultPalette.textBody,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(dialogContext).pop();
-                        if (!context.mounted) {
-                          return;
-                        }
-                        _openLoginFlow(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: ResultPalette.primary,
-                      foregroundColor: Colors.white,
-                      shape: const StadiumBorder(),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 430),
+                    child: Container(
+                      margin: EdgeInsets.fromLTRB(
+                        16,
+                        0,
+                        16,
+                        16 + media.padding.bottom,
                       ),
-                      elevation: 4,
-                      shadowColor:
-                          ResultPalette.primary.withValues(alpha: 0.25),
-                    ),
-                    child: const Text(
-                      '로그인하기',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(40),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 40,
+                            offset: const Offset(0, -10),
+                          ),
+                        ],
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 120,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(40),
+                                ),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.8),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCBD5D8),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  '로그인 후 확인 가능합니다',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.2,
+                                    color: textDark,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(32),
+                                    border: Border.all(
+                                      color: const Color(0xFFEAF0F2),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.04),
+                                        blurRadius: 30,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      Positioned(
+                                        top: -8,
+                                        right: -8,
+                                        child: Container(
+                                          width: 72,
+                                          height: 72,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFB6C9CF)
+                                                .withValues(alpha: 0.2),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      ),
+                                      Column(
+                                        children: [
+                                          Wrap(
+                                            alignment: WrapAlignment.center,
+                                            spacing: 4,
+                                            runSpacing: 6,
+                                            children: [
+                                              const Text(
+                                                '해당 조항은 임차인의',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  height: 1.6,
+                                                  color: Color(0xFF2C3E42),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              ImageFiltered(
+                                                imageFilter: ImageFilter.blur(
+                                                  sigmaX: 6,
+                                                  sigmaY: 6,
+                                                ),
+                                                child: const Text(
+                                                  '권리금 회수 기회를 부당하게',
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    height: 1.6,
+                                                    color: redoOrange,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                              Container(
+                                                width: 36,
+                                                height: 36,
+                                                decoration: BoxDecoration(
+                                                  color: redoOrange.withValues(
+                                                    alpha: 0.12,
+                                                  ),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.lock_rounded,
+                                                  size: 20,
+                                                  color: redoOrange,
+                                                ),
+                                              ),
+                                              ImageFiltered(
+                                                imageFilter: ImageFilter.blur(
+                                                  sigmaX: 6,
+                                                  sigmaY: 6,
+                                                ),
+                                                child: const Text(
+                                                  '제한할 가능성이 매우 높습니다.',
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    height: 1.6,
+                                                    color: redoOrange,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 64,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.of(dialogContext).pop();
+                                      if (!context.mounted) {
+                                        return;
+                                      }
+                                      _openLoginFlow(context);
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                      elevation: 0,
+                                      backgroundColor: Colors.transparent,
+                                      shadowColor: Colors.transparent,
+                                    ),
+                                    child: Ink(
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFBAB45),
+                                            redoOrange,
+                                            redoOrangeDeep,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(24),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: redoOrange.withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            blurRadius: 20,
+                                            offset: const Offset(0, 8),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Center(
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              '로그인 후 자세히 보기',
+                                              style: TextStyle(
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            SizedBox(width: 6),
+                                            Icon(
+                                              Icons.arrow_forward,
+                                              size: 20,
+                                              color: Colors.white,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: textMuted,
+                                    textStyle: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  child: const Text('나중에 확인하기'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  style: TextButton.styleFrom(
-                    foregroundColor:
-                        isDark ? Colors.white70 : ResultPalette.textMuted,
-                    textStyle: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  child: const Text('나중에'),
                 ),
               ],
             ),
@@ -1062,6 +1250,7 @@ class _ResultScreenState extends State<ResultScreen> {
       return;
     }
     final analysisId = widget.viewModel.analysisId;
+    debugPrint('[result] detail button analysisId=${analysisId ?? 'null'}');
     if (analysisId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('상세 데이터를 찾을 수 없습니다.')),
@@ -1237,7 +1426,10 @@ class _ResultScreenState extends State<ResultScreen> {
       if (!context.mounted) {
         return;
       }
-      final spans = _buildClauseSummarySpans(decoded);
+      final spans = _buildClauseSummarySpans(
+        decoded,
+        analysisId: analysisId,
+      );
       widget.viewModel.updateSummarySpans(spans);
     } catch (error) {
       if (!context.mounted) {
@@ -1300,21 +1492,19 @@ class ResultTopAppBar extends StatelessWidget {
             color: isDark ? Colors.white : ResultPalette.textHeader,
           ),
           Expanded(
-            child: Text(
-              '분석 결과 리포트',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white : ResultPalette.textHeader,
+            child: Center(
+              child: Text(
+                '분석 결과 리포트',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : ResultPalette.textHeader,
+                ),
               ),
             ),
           ),
-          IconButton(
-            onPressed: onMenu,
-            icon: const Icon(Icons.more_horiz),
-            color: isDark ? Colors.white : ResultPalette.textHeader,
-          ),
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -1672,12 +1862,93 @@ Future<void> _openDetail(
     final decoded = await _getClauseDetailWithCache(analysisId, clause);
 
     final clauseText = _stringFromMap(decoded['clause_text']) ?? clause.body;
-    final tenantArgument =
-        _stringFromMap(decoded['tenant_argument']) ?? '';
-    final landlordArgument =
-        _stringFromMap(decoded['landlord_argument']) ?? '';
-    final compromiseQuote =
+    final uiPayload = _decodeUiPayload(
+      decoded['ui_payload'] ?? decoded['uiPayload'],
+    );
+    final tenantPick = _pickUiText(
+      uiPayload,
+      const [
+        ['P', 'L2'],
+        ['P', 'L1'],
+        [],
+      ],
+      const [
+        'tenant_view',
+        'tenantView',
+        'tenant_argument',
+        'tenantArgument',
+        'tenant',
+      ],
+      'tenant_argument',
+    );
+    final landlordPick = _pickUiText(
+      uiPayload,
+      const [
+        ['P', 'L2'],
+        ['P', 'L1'],
+        [],
+      ],
+      const [
+        'landlord_view',
+        'landlordView',
+        'landlord_argument',
+        'landlordArgument',
+        'landlord',
+      ],
+      'landlord_argument',
+    );
+    final compromisePick = _pickUiText(
+      uiPayload,
+      const [
+        ['P', 'L2'],
+        ['P', 'L1'],
+        [],
+      ],
+      const [
+        'compromise_quote',
+        'compromiseQuote',
+        'compromise',
+        'neutral_view',
+        'neutralView',
+        'summary',
+      ],
+      'compromise_quote',
+    );
+    final legacyTenant = _stringFromMap(decoded['tenant_argument']) ?? '';
+    final legacyLandlord = _stringFromMap(decoded['landlord_argument']) ?? '';
+    final legacyCompromise =
         _stringFromMap(decoded['compromise_quote']) ?? '';
+    final tenantArgument = tenantPick['value']?.isNotEmpty == true
+        ? tenantPick['value']!
+        : legacyTenant;
+    final landlordArgument = landlordPick['value']?.isNotEmpty == true
+        ? landlordPick['value']!
+        : legacyLandlord;
+    final compromiseQuote = compromisePick['value']?.isNotEmpty == true
+        ? compromisePick['value']!
+        : legacyCompromise;
+  final tenantSource = tenantPick['value']?.isNotEmpty == true
+        ? tenantPick['source']
+        : (legacyTenant.isNotEmpty ? 'legacy.tenant_argument' : 'empty');
+    final landlordSource = landlordPick['value']?.isNotEmpty == true
+        ? landlordPick['source']
+        : (legacyLandlord.isNotEmpty ? 'legacy.landlord_argument' : 'empty');
+    final compromiseSource = compromisePick['value']?.isNotEmpty == true
+        ? compromisePick['source']
+        : (legacyCompromise.isNotEmpty
+            ? 'legacy.compromise_quote'
+            : 'empty');
+    debugPrint(
+      '[result] detail sources analysisId=$analysisId '
+      'tenant=$tenantSource landlord=$landlordSource compromise=$compromiseSource '
+      'lenT=${tenantArgument.length} lenL=${landlordArgument.length} '
+      'lenC=${compromiseQuote.length}',
+    );
+    _logUiPayloadKeys(
+      uiPayload,
+      label: 'detail',
+      analysisId: analysisId,
+    );
     final draftText = _stringFromMap(decoded['draft_text']) ??
         _stringFromMap(decoded['draftText']);
     final questions = _parseDetailQuestions(decoded['questions']);
@@ -1840,11 +2111,75 @@ String _friendlyDetailErrorMessage(Object error) {
 }
 
 List<ResultSummarySpan> _buildClauseSummarySpans(
-  Map<String, dynamic> decoded,
-) {
-  final tenantArgument = _sanitizeArgument(decoded['tenant_argument']);
-  final landlordArgument = _sanitizeArgument(decoded['landlord_argument']);
-  final compromiseQuote = _sanitizeArgument(decoded['compromise_quote']);
+  Map<String, dynamic> decoded, {
+  String? analysisId,
+}) {
+  final uiPayload = _decodeUiPayload(
+    decoded['ui_payload'] ?? decoded['uiPayload'],
+  );
+  final tenantPick = _pickUiText(
+    uiPayload,
+    const [
+      ['P', 'L2'],
+      ['P', 'L1'],
+      [],
+    ],
+    const [
+      'tenant_view',
+      'tenantView',
+      'tenant_argument',
+      'tenantArgument',
+      'tenant',
+    ],
+    'tenant_argument',
+  );
+  final landlordPick = _pickUiText(
+    uiPayload,
+    const [
+      ['P', 'L2'],
+      ['P', 'L1'],
+      [],
+    ],
+    const [
+      'landlord_view',
+      'landlordView',
+      'landlord_argument',
+      'landlordArgument',
+      'landlord',
+    ],
+    'landlord_argument',
+  );
+  final compromisePick = _pickUiText(
+    uiPayload,
+    const [
+      ['P', 'L2'],
+      ['P', 'L1'],
+      [],
+    ],
+    const [
+      'compromise_quote',
+      'compromiseQuote',
+      'compromise',
+      'neutral_view',
+      'neutralView',
+      'summary',
+    ],
+    'compromise_quote',
+  );
+  final tenantArgument = _sanitizeArgument(
+    tenantPick['value'] ?? decoded['tenant_argument'],
+  );
+  final landlordArgument = _sanitizeArgument(
+    landlordPick['value'] ?? decoded['landlord_argument'],
+  );
+  final compromiseQuote = _sanitizeArgument(
+    compromisePick['value'] ?? decoded['compromise_quote'],
+  );
+  _logUiPayloadKeys(
+    uiPayload,
+    label: 'summary',
+    analysisId: analysisId,
+  );
   final riskReason = _sanitizeArgument(decoded['risk_reason']);
   final clauseText = _stringFromMap(decoded['clause_text']);
   final negotiationPoints = _stringListFrom(decoded['negotiation_points']);
@@ -2032,6 +2367,138 @@ String? _stringFromMap(dynamic value) {
   return converted.isEmpty ? null : converted;
 }
 
+Map<String, dynamic>? _decodeUiPayload(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return value.map(
+      (key, val) => MapEntry(key.toString(), val),
+    );
+  }
+  if (value is String) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return decoded.map(
+          (key, val) => MapEntry(key.toString(), val),
+        );
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+dynamic _lookupMapValue(Map<String, dynamic> map, String key) {
+  if (map.containsKey(key)) {
+    return map[key];
+  }
+  final lower = key.toLowerCase();
+  for (final entry in map.entries) {
+    if (entry.key.toString().toLowerCase() == lower) {
+      return entry.value;
+    }
+  }
+  return null;
+}
+
+Map<String, dynamic>? _nestedMap(
+  Map<String, dynamic>? root,
+  List<String> path,
+) {
+  if (root == null) {
+    return null;
+  }
+  dynamic current = root;
+  for (final segment in path) {
+    if (current is! Map) {
+      return null;
+    }
+    current = _lookupMapValue(
+      Map<String, dynamic>.from(current),
+      segment,
+    );
+  }
+  if (current is Map<String, dynamic>) {
+    return current;
+  }
+  if (current is Map) {
+    return current.map(
+      (key, val) => MapEntry(key.toString(), val),
+    );
+  }
+  return null;
+}
+
+Map<String, String?> _pickUiText(
+  Map<String, dynamic>? root,
+  List<List<String>> paths,
+  List<String> keys,
+  String fallbackLabel,
+) {
+  for (final path in paths) {
+    final scope = path.isEmpty ? root : _nestedMap(root, path);
+    if (scope == null) {
+      continue;
+    }
+    for (final key in keys) {
+      final value = _stringFromMap(
+        _lookupMapValue(scope, key),
+      );
+      if (value != null && value.isNotEmpty) {
+        final prefix =
+            path.isEmpty ? 'ui_payload' : 'ui_payload.${path.join('.')}';
+        return {
+          'value': value,
+          'source': '$prefix.$key',
+        };
+      }
+    }
+  }
+  return {
+    'value': null,
+    'source': 'legacy.$fallbackLabel',
+  };
+}
+
+void _logUiPayloadKeys(
+  Map<String, dynamic>? root, {
+  required String label,
+  String? analysisId,
+}) {
+  if (root == null) {
+    debugPrint('[result] ui_payload $label analysisId=$analysisId keys=<null>');
+    return;
+  }
+  final keys = <String>{};
+  void walk(Map<String, dynamic> node, String prefix) {
+    for (final entry in node.entries) {
+      final key = prefix.isEmpty ? entry.key : '$prefix.${entry.key}';
+      keys.add(key);
+      final value = entry.value;
+      if (value is Map<String, dynamic>) {
+        walk(value, key);
+      } else if (value is Map) {
+        walk(value.map((k, v) => MapEntry(k.toString(), v)), key);
+      }
+    }
+  }
+
+  walk(root, '');
+  final sorted = keys.toList()..sort();
+  debugPrint(
+    '[result] ui_payload $label analysisId=$analysisId keys=${sorted.join(', ')}',
+  );
+}
+
 List<String> _stringListFrom(dynamic value) {
   if (value is List) {
     return value
@@ -2127,3 +2594,6 @@ String _gradeFromAlternativeLabel(String label, int index) {
   }
   return String.fromCharCode('A'.codeUnitAt(0) + index);
 }
+
+
+

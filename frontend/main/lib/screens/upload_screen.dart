@@ -1,11 +1,11 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'guide.dart';
 
-import '../loading.dart';
 import '../result.dart';
 import '../shared/dashboard_palette.dart';
 import '../shared/history_repository.dart';
@@ -13,7 +13,7 @@ import '../user_session.dart';
 import 'history_screen.dart';
 import 'profile_screen.dart';
 
-/// 문서 업로드/촬영 및 분석 결과를 보여주는 화면.
+/// 臾몄꽌 ?낅줈??珥ъ쁺 諛?遺꾩꽍 寃곌낵瑜?蹂댁뿬二쇰뒗 ?붾㈃.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
 
@@ -21,7 +21,7 @@ class UploadScreen extends StatefulWidget {
   State<UploadScreen> createState() => _UploadScreenState();
 }
 
-/// 업로드/촬영 흐름과 활동 목록을 관리하는 상태 객체.
+/// ?낅줈??珥ъ쁺 ?먮쫫怨??쒕룞 紐⑸줉??愿由ы븯???곹깭 媛앹껜.
 class _UploadScreenState extends State<UploadScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -43,7 +43,7 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
-  /// 파일 확장자에 따라 아이콘을 선택한다.
+  /// ?뚯씪 ?뺤옣?먯뿉 ?곕씪 ?꾩씠肄섏쓣 ?좏깮?쒕떎.
   IconData _pickIconForFile(String filename) {
     final lower = filename.toLowerCase();
     if (lower.endsWith('.pdf')) {
@@ -57,7 +57,7 @@ class _UploadScreenState extends State<UploadScreen> {
     return Icons.insert_drive_file;
   }
 
-  /// 활동 로그에 표시할 시간 문자열을 만든다.
+  /// ?쒕룞 濡쒓렇???쒖떆???쒓컙 臾몄옄?댁쓣 留뚮뱺??
   String _formatTimestamp(DateTime dateTime) {
     final hour = dateTime.hour;
     final minute = dateTime.minute.toString().padLeft(2, '0');
@@ -104,26 +104,26 @@ class _UploadScreenState extends State<UploadScreen> {
     return '${trimmed.substring(0, 400)}...';
   }
 
-  /// 파일 선택기를 열고 선택된 파일을 분석 API로 전송한다.
+  /// ?뚯씪 ?좏깮湲곕? ?닿퀬 ?좏깮???뚯씪??遺꾩꽍 API濡??꾩넚?쒕떎.
   Future<void> _handleUpload(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    // 파일 선택기는 PDF/이미지 확장자만 허용한다.
+    // ?뚯씪 ?좏깮湲곕뒗 PDF/?대?吏 ?뺤옣?먮쭔 ?덉슜?쒕떎.
     final pickerResult = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
     );
 
     if (pickerResult == null) {
-      messenger.showSnackBar(const SnackBar(content: Text('파일 선택이 취소되었습니다.')));
+      messenger.showSnackBar(const SnackBar(content: Text('?뚯씪 ?좏깮??痍⑥냼?섏뿀?듬땲??')));
       return;
     }
 
     final pickedFile = pickerResult.files.single;
     final path = pickedFile.path;
     if (path == null) {
-      // 경로를 확인할 수 없으면 업로드를 진행할 수 없다.
+      // 寃쎈줈瑜??뺤씤?????놁쑝硫??낅줈?쒕? 吏꾪뻾?????녿떎.
       messenger.showSnackBar(
-        const SnackBar(content: Text('파일 경로를 확인할 수 없습니다.')),
+        const SnackBar(content: Text('?뚯씪 寃쎈줈瑜??뺤씤?????놁뒿?덈떎.')),
       );
       return;
     }
@@ -134,13 +134,13 @@ class _UploadScreenState extends State<UploadScreen> {
     await _analyzeFile(context, path, displayName: pickedFile.name);
   }
 
-  /// 기기 카메라로 촬영한 이미지를 분석 API로 전송한다.
+  /// 湲곌린 移대찓?쇰줈 珥ъ쁺???대?吏瑜?遺꾩꽍 API濡??꾩넚?쒕떎.
   Future<void> _handleCameraTap(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    // 카메라 앱을 호출해 사진을 촬영한다.
+    // 移대찓???깆쓣 ?몄텧???ъ쭊??珥ъ쁺?쒕떎.
     final captured = await _imagePicker.pickImage(source: ImageSource.camera);
     if (captured == null) {
-      messenger.showSnackBar(const SnackBar(content: Text('촬영이 취소되었습니다.')));
+      messenger.showSnackBar(const SnackBar(content: Text('珥ъ쁺??痍⑥냼?섏뿀?듬땲??')));
       return;
     }
     if (!context.mounted) {
@@ -151,7 +151,7 @@ class _UploadScreenState extends State<UploadScreen> {
     await _analyzeFile(context, captured.path, displayName: displayName);
   }
 
-  /// 파일 경로를 받아 분석 API 호출과 결과 UI 갱신을 수행한다.
+  /// ?뚯씪 寃쎈줈瑜?諛쏆븘 遺꾩꽍 API ?몄텧怨?寃곌낵 UI 媛깆떊???섑뻾?쒕떎.
   Future<void> _analyzeFile(
     BuildContext context,
     String path, {
@@ -163,18 +163,20 @@ class _UploadScreenState extends State<UploadScreen> {
     debugPrint('[upload] userId=${userId ?? 'null'} email=${email ?? 'null'}');
     if (userId == null && (email == null || email.isEmpty)) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('로그인 정보가 없습니다.')),
+        const SnackBar(content: Text('濡쒓렇???뺣낫媛 ?놁뒿?덈떎.')),
       );
       return;
     }
 
 
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LoadingScreen()),
+      MaterialPageRoute(
+        builder: (_) => const GuideScreen(showCancelButton: true),
+      ),
     );
 
     try {
-      // 로컬 API 엔드포인트로 파일을 전송한다.
+      // 濡쒖뺄 API ?붾뱶?ъ씤?몃줈 ?뚯씪???꾩넚?쒕떎.
       final uri = Uri.parse('http://3.38.43.65:8000/analyze/file');
       final request = http.MultipartRequest('POST', uri)
         ..files.add(await http.MultipartFile.fromPath('file', path, filename: displayName));
@@ -199,11 +201,11 @@ class _UploadScreenState extends State<UploadScreen> {
       );
 
       if (response.statusCode != 200) {
-        // 상태 코드가 200이 아니면 실패로 처리한다.
-        throw Exception('API 오류: ${response.statusCode} $body');
+        // ?곹깭 肄붾뱶媛 200???꾨땲硫??ㅽ뙣濡?泥섎━?쒕떎.
+        throw Exception('API ?ㅻ쪟: ${response.statusCode} $body');
       }
 
-      // 응답 JSON을 파싱해 위험 조항 수와 요약을 추출한다.
+      // ?묐떟 JSON???뚯떛???꾪뿕 議고빆 ?섏? ?붿빟??異붿텧?쒕떎.
       final data = jsonDecode(body) as Map<String, dynamic>;
       final riskyClausesList = data['risky_clauses'] as List?;
       final riskyCount =
@@ -223,7 +225,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
       Navigator.of(context, rootNavigator: true).pop();
 
-      // 활동 내역 카드에 표시할 데이터 구성.
+      // ?쒕룞 ?댁뿭 移대뱶???쒖떆???곗씠??援ъ꽦.
       final statusLabel = riskyCount > 0
           ? '$riskyCount Risks Found'
           : (riskLevel ?? 'Safe');
@@ -257,7 +259,7 @@ class _UploadScreenState extends State<UploadScreen> {
         return;
       }
 
-      // 분석 결과 화면으로 전환한다.
+      // 遺꾩꽍 寃곌낵 ?붾㈃?쇰줈 ?꾪솚?쒕떎.
       final viewModel = ResultViewModel.fromApi(
         data,
         filename: displayName,
@@ -268,9 +270,9 @@ class _UploadScreenState extends State<UploadScreen> {
       );
     } catch (error) {
       if (context.mounted) {
-        // 실패 시 로딩을 닫고 메시지를 표시한다.
+        // ?ㅽ뙣 ??濡쒕뵫???リ퀬 硫붿떆吏瑜??쒖떆?쒕떎.
         Navigator.of(context, rootNavigator: true).pop();
-        messenger.showSnackBar(SnackBar(content: Text('분석 실패: $error')));
+        messenger.showSnackBar(SnackBar(content: Text('遺꾩꽍 ?ㅽ뙣: $error')));
       }
     }
   }
@@ -287,7 +289,7 @@ class _UploadScreenState extends State<UploadScreen> {
               color: Colors.white,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // 스크롤 영역 안에서 전체 레이아웃을 구성한다.
+                  // ?ㅽ겕濡??곸뿭 ?덉뿉???꾩껜 ?덉씠?꾩썐??援ъ꽦?쒕떎.
                   return SingleChildScrollView(
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
@@ -307,7 +309,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          // 업로드/기록 액션 카드 2열.
+                          // ?낅줈??湲곕줉 ?≪뀡 移대뱶 2??
                           Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -317,7 +319,7 @@ class _UploadScreenState extends State<UploadScreen> {
                                 Expanded(
                                   child: _ActionCard(
                                     title: '파일 업로드',
-                                    subtitle: 'PDF 또는 사진',
+                                    subtitle: 'PDF ?먮뒗 ?ъ쭊',
                                     icon: Icons.upload_file,
                                     onTap: () => _handleUpload(context),
                                   ),
@@ -325,8 +327,8 @@ class _UploadScreenState extends State<UploadScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: _ActionCard(
-                                    title: '기록',
-                                    subtitle: '과거 기록 보기',
+                                    title: '湲곕줉',
+                                    subtitle: '怨쇨굅 湲곕줉 蹂닿린',
                                     icon: Icons.history,
                                     onTap: () {
                                       Navigator.of(context).push(
@@ -345,8 +347,8 @@ class _UploadScreenState extends State<UploadScreen> {
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 16),
                             child: _SectionHeader(
-                              title: '최근 활동',
-                              actionLabel: '모든 보기',
+                              title: '理쒓렐 ?쒕룞',
+                              actionLabel: '紐⑤뱺 蹂닿린',
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -354,7 +356,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
                             ),
-                            // 활동 내역이 없으면 빈 상태를 보여준다.
+                            // ?쒕룞 ?댁뿭???놁쑝硫?鍮??곹깭瑜?蹂댁뿬以??
                             child: ValueListenableBuilder<List<ActivityEntry>>(
                               valueListenable:
                                   HistoryRepository.instance.entries,
@@ -391,7 +393,7 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 }
 
-/// 상단 앱 바.
+/// ?곷떒 ??諛?
 class _TopAppBar extends StatelessWidget {
   const _TopAppBar();
 
@@ -413,7 +415,7 @@ class _TopAppBar extends StatelessWidget {
             ),
           ),
           IconButton(
-            // 추후 계정/설정으로 연결 가능.
+            // 異뷀썑 怨꾩젙/?ㅼ젙?쇰줈 ?곌껐 媛??
             onPressed: () {
               Navigator.of(
                 context,
@@ -434,7 +436,7 @@ class _TopAppBar extends StatelessWidget {
   }
 }
 
-/// 인사말과 안내 문구 섹션.
+/// ?몄궗留먭낵 ?덈궡 臾멸뎄 ?뱀뀡.
 class _GreetingSection extends StatelessWidget {
   const _GreetingSection();
 
@@ -446,7 +448,7 @@ class _GreetingSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '반갑습니다.',
+            '諛섍컩?듬땲??',
             style: TextStyle(
               color: DashboardPalette.textDark,
               fontSize: 26,
@@ -456,7 +458,7 @@ class _GreetingSection extends StatelessWidget {
           ),
           SizedBox(height: 6),
           Text(
-            '문서를 분석할 준비가 되어 있습니까?',
+            '臾몄꽌瑜?遺꾩꽍??以鍮꾧? ?섏뼱 ?덉뒿?덇퉴?',
             style: TextStyle(
               color: DashboardPalette.textMuted,
               fontSize: 14.5,
@@ -469,7 +471,7 @@ class _GreetingSection extends StatelessWidget {
   }
 }
 
-/// 촬영 안내가 들어있는 히어로 카드.
+/// 珥ъ쁺 ?덈궡媛 ?ㅼ뼱?덈뒗 ?덉뼱濡?移대뱶.
 class _HeroCard extends StatelessWidget {
   final VoidCallback onCameraTap;
 
@@ -489,7 +491,7 @@ class _HeroCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // 배경 장식 아이콘.
+          // 諛곌꼍 ?μ떇 ?꾩씠肄?
           Positioned.fill(
             child: Opacity(
               opacity: 0.12,
@@ -503,7 +505,7 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
           ),
-          // 하단으로 갈수록 어두워지는 오버레이.
+          // ?섎떒?쇰줈 媛덉닔濡??대몢?뚯????ㅻ쾭?덉씠.
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
@@ -517,7 +519,7 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
           ),
-          // 우측 상단 스캐너 아이콘 배지.
+          // ?곗륫 ?곷떒 ?ㅼ틦???꾩씠肄?諛곗?.
           Positioned(
             top: 12,
             right: 12,
@@ -534,7 +536,7 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
           ),
-          // 하단에 텍스트와 촬영 버튼 배치.
+          // ?섎떒???띿뒪?몄? 珥ъ쁺 踰꾪듉 諛곗튂.
           Positioned(
             left: 16,
             right: 16,
@@ -546,7 +548,7 @@ class _HeroCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '촬영하기',
+                        '珥ъ쁺?섍린',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -555,7 +557,7 @@ class _HeroCard extends StatelessWidget {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        '카메라로 독소 조항을 즉시 감지합니다.',
+                        '移대찓?쇰줈 ?낆냼 議고빆??利됱떆 媛먯??⑸땲??',
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 12.5,
@@ -570,7 +572,7 @@ class _HeroCard extends StatelessWidget {
                   color: DashboardPalette.primary,
                   shape: const CircleBorder(),
                   child: InkWell(
-                    // 촬영 버튼 클릭 시 카메라 실행.
+                    // 珥ъ쁺 踰꾪듉 ?대┃ ??移대찓???ㅽ뻾.
                     onTap: onCameraTap,
                     customBorder: const CircleBorder(),
                     child: const SizedBox(
@@ -589,7 +591,7 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-/// 기능 진입용 카드(파일 업로드/기록 등).
+/// 湲곕뒫 吏꾩엯??移대뱶(?뚯씪 ?낅줈??湲곕줉 ??.
 class _ActionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -609,7 +611,7 @@ class _ActionCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        // 카드 전체가 탭 영역.
+        // 移대뱶 ?꾩껜媛 ???곸뿭.
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
@@ -655,7 +657,7 @@ class _ActionCard extends StatelessWidget {
   }
 }
 
-/// 섹션 제목과 액션 레이블 영역.
+/// ?뱀뀡 ?쒕ぉ怨??≪뀡 ?덉씠釉??곸뿭.
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String actionLabel;
@@ -689,7 +691,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// 활동 내역이 없을 때 보여주는 빈 상태 화면.
+/// ?쒕룞 ?댁뿭???놁쓣 ??蹂댁뿬二쇰뒗 鍮??곹깭 ?붾㈃.
 class _EmptyActivityState extends StatelessWidget {
   const _EmptyActivityState();
 
@@ -699,7 +701,7 @@ class _EmptyActivityState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
-          '아직 기록 없음',
+          '?꾩쭅 湲곕줉 ?놁쓬',
           style: const TextStyle(
             color: DashboardPalette.textMuted,
             fontSize: 12.5,
@@ -711,7 +713,7 @@ class _EmptyActivityState extends StatelessWidget {
   }
 }
 
-/// 활동 내역에 표시할 데이터 모델.
+/// ?쒕룞 ?댁뿭???쒖떆???곗씠??紐⑤뜽.
 class _ActivityItem extends StatelessWidget {
   final String title;
   final String time;
@@ -760,7 +762,7 @@ class _ActivityItem extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // 파일 유형 아이콘.
+          // ?뚯씪 ?좏삎 ?꾩씠肄?
           Container(
             width: 40,
             height: 40,
@@ -768,7 +770,7 @@ class _ActivityItem extends StatelessWidget {
             child: Icon(icon, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
-          // 제목과 시간 정보.
+          // ?쒕ぉ怨??쒓컙 ?뺣낫.
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -795,7 +797,7 @@ class _ActivityItem extends StatelessWidget {
               ],
             ),
           ),
-          // 위험 여부 배지.
+          // ?꾪뿕 ?щ? 諛곗?.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
@@ -835,7 +837,7 @@ class _ActivityItem extends StatelessWidget {
   }
 }
 
-/// 하단 보안 안내 풋터.
+/// ?섎떒 蹂댁븞 ?덈궡 ?뗮꽣.
 class _TrustFooter extends StatelessWidget {
   const _TrustFooter();
 

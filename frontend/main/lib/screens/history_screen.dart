@@ -1,13 +1,13 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:main/welcome_screen.dart';
+import 'package:main/screens/upload_screen.dart';
 
 import '../login_screen.dart';
 import '../result.dart';
 import '../signup_screen.dart';
 import '../shared/history_repository.dart';
 import '../user_session.dart';
-import '../welcome_screen.dart';
 import 'profile_screen.dart';
-import 'upload_screen.dart';
 
 class HistoryPalette {
   static const Color primary = Color(0xFFFF8A00);
@@ -47,9 +47,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load history: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load history: $error')));
     }
   }
 
@@ -140,18 +140,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 const SizedBox(height: 88),
               ],
             ),
-            const Positioned(
-              right: 24,
-              bottom: 108,
-              child: _ScrollTopButton(),
-            ),
+            const Positioned(right: 24, bottom: 108, child: _ScrollTopButton()),
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: _HistoryBottomNav(
-                onLoginTap: _openLoginFlow,
-              ),
+              child: _HistoryBottomNav(onLoginTap: _openLoginFlow),
             ),
           ],
         ),
@@ -224,9 +218,8 @@ class _HistoryAppBar extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.of(context).popUntil(
-              (route) => route.isFirst,
-            ),
+            onPressed: () =>
+                Navigator.of(context).popUntil((route) => route.isFirst),
             icon: const Icon(Icons.arrow_back_rounded),
             color: isDark ? Colors.white : HistoryPalette.textDark,
             style: IconButton.styleFrom(
@@ -250,9 +243,9 @@ class _HistoryAppBar extends StatelessWidget {
           ),
           IconButton(
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
             },
             icon: const Icon(Icons.account_circle_rounded),
             color: isDark ? const Color(0xFFE2E8F0) : HistoryPalette.textDark,
@@ -287,17 +280,26 @@ class _HistorySearch extends StatelessWidget {
           decoration: InputDecoration(
             hintText: '계약서 이름 검색',
             hintStyle: TextStyle(
-              color: isDark ? const Color(0xFF9CA3AF) : HistoryPalette.textMuted,
+              color: isDark
+                  ? const Color(0xFF9CA3AF)
+                  : HistoryPalette.textMuted,
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
             ),
             prefixIcon: Icon(
               Icons.search,
-              color: isDark ? const Color(0xFF9CA3AF) : HistoryPalette.textMuted,
+              color: isDark
+                  ? const Color(0xFF9CA3AF)
+                  : HistoryPalette.textMuted,
             ),
             filled: true,
-            fillColor: isDark ? const Color(0xFF1F2937) : const Color(0xFFF0F2F4),
-            contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+            fillColor: isDark
+                ? const Color(0xFF1F2937)
+                : const Color(0xFFF0F2F4),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 12,
+              horizontal: 12,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide.none,
@@ -384,7 +386,9 @@ class _Chip extends StatelessWidget {
             style: TextStyle(
               color: selected
                   ? Colors.white
-                  : (isDark ? const Color(0xFFE2E8F0) : HistoryPalette.textDark),
+                  : (isDark
+                        ? const Color(0xFFE2E8F0)
+                        : HistoryPalette.textDark),
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
             ),
@@ -399,10 +403,7 @@ class _HistoryList extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final _HistoryDateFilter dateFilter;
 
-  const _HistoryList({
-    required this.onRefresh,
-    required this.dateFilter,
-  });
+  const _HistoryList({required this.onRefresh, required this.dateFilter});
 
   @override
   Widget build(BuildContext context) {
@@ -447,18 +448,23 @@ class _HistoryList extends StatelessWidget {
     final threshold = switch (filter) {
       _HistoryDateFilter.today => startOfToday,
       _HistoryDateFilter.week => startOfToday.subtract(const Duration(days: 7)),
-      _HistoryDateFilter.month => DateTime(now.year, now.month - 1, now.day),
-      _HistoryDateFilter.threeMonths => DateTime(now.year, now.month - 3, now.day),
+      _HistoryDateFilter.month =>
+        startOfToday.subtract(const Duration(days: 30)),
+      _HistoryDateFilter.threeMonths =>
+        startOfToday.subtract(const Duration(days: 90)),
       _HistoryDateFilter.all => DateTime.fromMillisecondsSinceEpoch(0),
     };
 
-    return entries.where((entry) {
-      final date = entry.createdAt ?? _parseEntryTime(entry.time);
-      if (date == null) {
-        return false;
-      }
-      return !date.isBefore(threshold);
-    }).toList(growable: false);
+    return entries
+        .where((entry) {
+          final date = (entry.createdAt ?? _parseEntryTime(entry.time))
+              ?.toLocal();
+          if (date == null) {
+            return false;
+          }
+          return !date.isBefore(threshold);
+        })
+        .toList(growable: false);
   }
 
   DateTime? _parseEntryTime(String value) {
@@ -543,7 +549,9 @@ class _HistoryEntryCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: isDark ? Colors.white : HistoryPalette.textDark,
+                            color: isDark
+                                ? Colors.white
+                                : HistoryPalette.textDark,
                             fontSize: 13.5,
                             fontWeight: FontWeight.w800,
                           ),
@@ -564,7 +572,10 @@ class _HistoryEntryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: entry.badgeColor,
                       borderRadius: BorderRadius.circular(999),
@@ -588,12 +599,15 @@ class _HistoryEntryCard extends StatelessWidget {
   }
 }
 
-Future<void> _openHistoryDetail(BuildContext context, ActivityEntry entry) async {
+Future<void> _openHistoryDetail(
+  BuildContext context,
+  ActivityEntry entry,
+) async {
   final analysisId = entry.analysisId;
   if (analysisId == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('상세 데이터를 찾을 수 없습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('상세 데이터를 찾을 수 없습니다.')));
     return;
   }
 
@@ -604,14 +618,17 @@ Future<void> _openHistoryDetail(BuildContext context, ActivityEntry entry) async
   );
 
   try {
-    final data = await HistoryRepository.instance.fetchAnalysisDetail(analysisId);
+    final data = await HistoryRepository.instance.fetchAnalysisDetail(
+      analysisId,
+    );
     if (!context.mounted) {
       return;
     }
     Navigator.of(context, rootNavigator: true).pop();
     final viewModel = ResultViewModel.fromApi(
       data,
-      filename: data['original_name']?.toString() ??
+      filename:
+          data['original_name']?.toString() ??
           data['filename']?.toString() ??
           entry.title,
       fallbackSummary: data['summary']?.toString(),
@@ -655,9 +672,7 @@ class _ScrollTopButton extends StatelessWidget {
 class _HistoryBottomNav extends StatelessWidget {
   final void Function(BuildContext) onLoginTap;
 
-  const _HistoryBottomNav({
-    required this.onLoginTap,
-  });
+  const _HistoryBottomNav({required this.onLoginTap});
 
   @override
   Widget build(BuildContext context) {
@@ -711,9 +726,9 @@ class _HistoryBottomNav extends StatelessWidget {
                 onLoginTap(context);
                 return;
               }
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
             },
           ),
         ],
@@ -760,7 +775,3 @@ class _HistoryNavItem extends StatelessWidget {
     );
   }
 }
-
-
-
-

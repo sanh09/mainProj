@@ -262,7 +262,7 @@ class HistoryRepository {
     if (timestamp == null || timestamp.isEmpty) {
       return '';
     }
-    final parsed = DateTime.tryParse(timestamp);
+    final parsed = _tryParseDate(timestamp);
     if (parsed == null) {
       return timestamp;
     }
@@ -278,7 +278,20 @@ class HistoryRepository {
     if (value == null || value.isEmpty) {
       return null;
     }
-    return DateTime.tryParse(value);
+    final trimmed = value.trim();
+    final direct = DateTime.tryParse(trimmed);
+    if (direct != null) {
+      return direct;
+    }
+    final normalized = trimmed.replaceFirst(' ', 'T');
+    final parsed = DateTime.tryParse(normalized);
+    if (parsed != null) {
+      return parsed;
+    }
+    final withoutFraction = normalized.contains('.')
+        ? normalized.split('.').first
+        : normalized;
+    return DateTime.tryParse(withoutFraction);
   }
 
   IconData _pickIconForFile(String filename) {

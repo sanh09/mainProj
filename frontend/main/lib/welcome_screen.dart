@@ -6,8 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'screens/guide.dart';
 
-import 'loading.dart';
 import 'result.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
@@ -98,7 +98,7 @@ class WelcomeScreen extends StatelessWidget {
                                               : WelcomePalette.textMuted,
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 12),
                                       const _ContractHelperMiniLogo(),
                                     ],
                                   ),
@@ -398,7 +398,7 @@ class WelcomeScreen extends StatelessWidget {
                                     child: Column(
                                       children: [
                                         Text(
-                                          '카메라로 계약서를 찍으면\n3초 만에 요약해 드려요',
+                                          '버튼을 클릭하여\n내 계약서를 분석해보세요.',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontSize: 15,
@@ -525,18 +525,10 @@ void _showCaptureOptions(BuildContext context) {
               ),
             ),
             const SizedBox(height: 16),
-            _OptionTile(
-              icon: Icons.photo_camera_rounded,
-              label: '사진촬영',
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await _pickFromCamera(parentContext);
-              },
-            ),
-            _OptionTile(
-              icon: Icons.insert_drive_file_rounded,
-              label: '파일 업로드',
-              onTap: () async {
+              _OptionTile(
+                icon: Icons.insert_drive_file_rounded,
+                label: '파일 업로드',
+                onTap: () async {
                 Navigator.of(sheetContext).pop();
                 await _pickFromFile(parentContext);
               },
@@ -554,21 +546,6 @@ void _showCaptureOptions(BuildContext context) {
       );
     },
   );
-}
-
-Future<void> _pickFromCamera(BuildContext context) async {
-  try {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera);
-    if (!context.mounted) return;
-    if (image == null) return;
-    await _analyzeFile(context, image.path, displayName: image.name);
-  } catch (error) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('카메라 열기 실패: $error')));
-  }
 }
 
 Future<void> _pickFromGallery(BuildContext context) async {
@@ -638,7 +615,9 @@ Future<void> _analyzeFile(
 
   AnalysisFlowTrace.mark('loading_push');
   Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const LoadingScreen()),
+    MaterialPageRoute(
+      builder: (_) => const GuideScreen(showCancelButton: true),
+    ),
   );
 
   try {
@@ -1051,8 +1030,8 @@ class _ContractHelperMiniLogoState extends State<_ContractHelperMiniLogo>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 38,
-      height: 38,
+      width: 44,
+      height: 44,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -1094,8 +1073,8 @@ class _ContractHelperMiniLogoState extends State<_ContractHelperMiniLogo>
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 20,
-                    height: 24,
+                    width: 23,
+                    height: 27,
                     padding: const EdgeInsets.symmetric(vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -1200,10 +1179,10 @@ class _CaptureButton extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: const [
-              Icon(Icons.photo_camera_rounded, color: Colors.white, size: 62),
+              Icon(Icons.description_rounded, color: Colors.white, size: 62),
               SizedBox(height: 12),
               Text(
-                '계약서 찍기',
+                '계약서 분석',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
