@@ -1,194 +1,118 @@
----
-# MainProject
----
-# CanSi
-
-#### *Can I Sign This?*
-
-> **AI 기반 계약서 분석 서비스**
-
----
-
-## 📌 프로젝트 소개
-
-CanSi는
-법률 지식이 없는 일반 사용자도 **안심하고 계약에 서명할 수 있도록**
-OCR과 AI를 활용해 **계약서를 분석**하고,
-
-* ❗ 사용자에게 **불리한 조항을 탐지**
-* ✅ **유리한 조건을 제안**
-* 📖 어려운 법률 문장을 **이해하기 쉬운 언어로 설명**
-
-해주는 **계약 보호 AI 서비스**입니다.
-
----
-
-## 🎯 프로젝트 목적
-
-* 계약서의 **정보 비대칭 문제 해결**
-* 법을 몰라서 발생하는 **불공정 계약 예방**
-* 전문가 도움 없이도 **사전 리스크 인지 가능**
-
-> ✨ *“사인하기 전에, AI에게 한 번 더 묻다”*
->
-> ---
-
-## 📎 기타
-
-* 본 프로젝트는 **AIX 3기 Bootcamp 메인 프로젝트**입니다.
-* 협업 및 문서 관리는 **Notion**을 통해 진행합니다.
-
----
-
-✨ **CanSi — Can I Sign This?**
-*당신의 계약을, AI가 먼저 읽어드립니다.*
-
----
-
-## 🧑‍🤝‍🧑 팀 구성 및 역할
-
-### 🔹 기획 · 문서
-
-* 장예슬, 노은찬, 김영우
-
-📊 데이터 수집
-
-* 노은찬, 장예슬, 박상현
-
-### 🎨 UI / UX
-
-* 장예슬,조성현
-
-### 💻 Frontend
-
-* 조성현, 장예슬 , 박상현
-
-### ⚙️ Backend
-
-* 김영우, 노은찬, 조성현, 박상현
-
-### 🗄 Database
-
-* 노은찬, 박상현, 조성현
-
-### 🌐 Domain
-
-* 김영우
-
-
-### 🤖 AI / Model
-
-* 박상현, 노은찬
-
-### 🔧 Git / Docker
-
-* 박상현, 노은찬
-
-###
-
----
-## 📁 프로젝트 구조
-
-본 프로젝트는 **모노레포(Monorepo) 구조**로 구성되어 있으며,
-각 영역을 역할별로 분리하여 개발 및 배포 효율성을 높였습니다.
-
-
-```
-mobaextreme/
-├─ frontend/              # Flutter 기반 사용자 애플리케이션
-├─ backend/               # OCR · AI · API 서버 (Python)
-├─ realtime/              # 실시간 처리 / WebSocket 서버
-├─ docker-compose.yml     # 전체 서비스 통합 실행 설정
-└─ README.md              # 프로젝트 전체 문서
-```
----
-* **frontend/**
-  사용자와 직접 상호작용하는 모바일 UI 영역
-
-* **backend/**
-  계약서 OCR 처리, AI 분석, 비즈니스 로직 및 API 제공
-
-* **realtime/**
-  분석 진행 상태, 실시간 알림 등을 위한 실시간 처리 서버
-
-* **docker-compose.yml**
-  모든 서비스를 한 번에 실행·관리하기 위한 Docker 설정 파일
-
----
-
-## 🛠 기술 스택
-
-| 구분            | 기술                      |
-| ------------- | ----------------------- |
-| Frontend      | Flutter, Android Studio |
-| Backend       | Python                  |
-| OCR           | Upstage OCR             |
-| Database      | SQL                     |
-| DevOps        | Docker                  |
-| Collaboration | Git, Notion             |
-| Environment   | WSL2 (Ubuntu 20.04)     |
-
----
-
-
-## ⚙️ 개발 환경 설정 (WSL2)
-
-### 1️⃣ PowerShell 관리자 실행
-
----
-
-### 2️⃣ Linux용 Windows 하위 시스템 활성화
-
-```bash
-dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
-```
-
----
-
-### 3️⃣ WSL 설치
-
-```bash
-wsl.exe --install
-```
-
----
-
-### 4️⃣ WSL 최신 버전 업데이트
-
-```bash
-wsl.exe --update
-```
-
----
-
-### 5️⃣ WSL2 기본 버전 설정
-
-```bash
-wsl --set-default-version 2
-```
-
----
-
-### 6️⃣ Ubuntu 20.04 설치
-
-```bash
-wsl --install -d Ubuntu-20.04
-```
-
----
-
-### 7️⃣ Ubuntu 실행
-
-```bash
-wsl -d Ubuntu-20.04
-```
-
----
-
-### 8️⃣ 설치 확인
-
-```bash
-wsl -l -v
-```
-
-
+📄 CanSi — Can I Sign This?
+
+AI 기반 계약서 분석 서비스
+“사인하기 전에, AI에게 한 번 더 묻다”
+
+🧩 1. 문제 정의 (Problem)
+
+일반 사용자는 계약서의 복잡한 법률 용어와 구조로 인해
+불리한 조건을 인지하지 못한 채 서명하는 문제가 발생합니다.
+
+정보 비대칭 → 불공정 계약
+법률 지식 부족 → 리스크 판단 어려움
+전문가 의존 → 비용 부담
+💡 2. 해결 방법 (Solution)
+
+CanSi는 OCR + AI를 활용하여 계약서를 분석하고
+사용자가 이해 가능한 형태로 재구성합니다.
+
+🔍 위험 조항 자동 탐지
+📖 쉬운 언어로 설명
+💬 협상 질문 및 수정 문구 제공
+📊 리스크 요약 제공
+👤 3. 사용자 흐름 (User Flow)
+계약서 업로드
+    ↓
+텍스트 추출 (OCR)
+    ↓
+조항 분리 및 구조화
+    ↓
+위험 조항 분석
+    ↓
+설명 + 협상 정보 생성
+    ↓
+결과 저장 및 조회
+🏗 4. 시스템 아키텍처
+[User]
+   ↓
+[Flutter Frontend]
+   ↓
+[FastAPI Backend]
+   ↓
+ ┌────────────────────────────┐
+ │   AI Pipeline              │
+ │  - OCR                     │
+ │  - Clause Split            │
+ │  - Risk Detection          │
+ │  - Summarization           │
+ │  - Suggestion Generation   │
+ └────────────────────────────┘
+   ↓
+[PostgreSQL / Supabase Storage]
+⚙️ 5. AI 분석 파이프라인
+1. 문서 추출
+PDF/이미지 → 텍스트 변환
+2. 조항 분리
+계약서를 조항 단위로 구조화
+3. 위험 조항 탐지
+리스크 수준 분류
+4. 위험 사유 생성
+자연어 설명 생성
+5. 사용자 액션 생성
+협상 질문
+대체 문구
+요약
+🔌 6. API
+Method	Endpoint	설명
+POST	/analyze/file	계약서 분석
+GET	/history	분석 이력
+GET	/analysis/{id}	분석 상세
+GET	/files	파일 목록
+GET	/profile	사용자 조회
+PUT	/profile	사용자 수정
+🗄 7. 데이터 구조
+users
+user_files
+analysis_history
+User → Files → Analysis History
+🛠 8. 기술 스택
+영역	기술
+Frontend	Flutter
+Backend	FastAPI (Python 3.11)
+AI	OpenAI API
+OCR	Upstage OCR
+DB	PostgreSQL
+Storage	Supabase
+Infra	Docker
+Env	WSL2
+🐳 9. 실행 방법
+docker compose up -d --build
+⚡ 10. 핵심 구현 포인트
+계약서를 조항 단위로 구조화하여 분석
+단순 결과가 아닌 사용자 행동(협상/판단)을 돕는 정보 제공
+FastAPI + DB + Storage를 연결한 실서비스 구조
+Docker 기반 실행 환경 구축
+🔥 11. 트러블슈팅
+OCR 결과 없음 → fallback 처리 필요
+파일명 깨짐 → UTF-8 보정
+DB 컬럼 변경 → 런타임 자동 처리
+분석 속도 → 캐싱 구조 적용
+⚠️ 12. 한계
+OCR 품질에 의존
+법률 도메인 특화 부족
+리스크 판단 기준 정량화 필요
+🚀 13. 개선 방향
+JWT 인증 추가
+비밀번호 해시 적용
+비동기 분석 처리 (Queue)
+RAG 기반 법령 연동
+성능 평가 지표 추가
+👨‍💻 14. 기여
+AI 분석 파이프라인 설계 및 구현
+FastAPI 백엔드 개발
+DB 구조 설계
+Docker 환경 구축
+✨ 15. 프로젝트 가치
+
+단순한 문서 분석이 아니라
+사용자가 실제로 판단하고 행동할 수 있도록 돕는 AI 시스템을 목표로 합니다.
